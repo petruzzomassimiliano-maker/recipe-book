@@ -1,0 +1,10 @@
+# Copy to .dev.vars and fill with real values
+# NEVER commit .dev.vars — it's in .gitignore
+
+DROPBOX_APP_KEY=your_dropbox_app_key_here
+DROPBOX_APP_SECRET=your_dropbox_app_secret_here
+DROPBOX_REDIRECT_URI=http://localhost:5173/dropbox-callback
+GEMINI_API_KEY=AIzaSy_your_gemini_key_here
+JWT_SECRET=dev-secret-change-me-in-prod-min-32-chars
+FATSECRET_OAUTH_CONSUMER_KEY=optional_fatsecret_key
+FATSECRET_OAUTH_CONSUMER_SECRET=optional_fatsecret_secret

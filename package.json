@@ -1,0 +1,17 @@
+{
+  "name": "recipe-book",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "worker"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace=frontend\" \"npm run dev --workspace=worker\"",
+    "build": "npm run build --workspace=frontend",
+    "install:all": "npm install && npm install --workspace=frontend && npm install --workspace=worker"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  }
+}

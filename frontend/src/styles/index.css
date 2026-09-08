@@ -1,0 +1,111 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── CSS Variables (Material Design 3) ── */
+:root {
+  --color-primary: #FF6B6B;
+  --color-primary-light: #FF8A80;
+  --color-secondary: #4ECDC4;
+  --color-tertiary: #FFD93D;
+  --color-surface: #FAFAFA;
+  --color-surface-container: #F3F3F3;
+  --color-on-surface: #1C1C1C;
+  --color-on-surface-muted: #6B7280;
+  --color-border: #E5E7EB;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.10), 0 2px 4px rgba(0,0,0,0.04);
+  --shadow-lg: 0 10px 32px rgba(0,0,0,0.12);
+  --font-family: 'Inter', system-ui, sans-serif;
+  --transition: 0.2s ease;
+}
+
+.dark {
+  --color-surface: #121212;
+  --color-surface-container: #1E1E1E;
+  --color-on-surface: #E8E8E8;
+  --color-on-surface-muted: #9CA3AF;
+  --color-border: #2D2D2D;
+  --color-primary: #FF8A80;
+}
+
+/* ── Base ── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-family);
+  background-color: var(--color-surface);
+  color: var(--color-on-surface);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100dvh;
+}
+
+/* ── Utilities ── */
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl
+           font-semibold text-white transition-all duration-200
+           bg-primary hover:bg-primary-dark active:scale-95
+           shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-primary/40;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl
+           font-semibold transition-all duration-200 border
+           bg-transparent hover:bg-gray-100 active:scale-95
+           focus:outline-none focus:ring-2 focus:ring-primary/30;
+  }
+
+  .card {
+    @apply bg-white dark:bg-surface-container rounded-2xl shadow-sm
+           border border-gray-100 dark:border-gray-800
+           transition-shadow hover:shadow-md;
+  }
+
+  .input-field {
+    @apply w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700
+           bg-white dark:bg-surface-container text-on-surface
+           focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary
+           transition-colors placeholder:text-gray-400;
+  }
+
+  .page-container {
+    @apply max-w-6xl mx-auto px-4 py-6 sm:px-6 lg:px-8;
+  }
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #D1D5DB;
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #9CA3AF;
+}
+
+/* ── Animations ── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}

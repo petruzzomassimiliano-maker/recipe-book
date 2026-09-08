@@ -1,0 +1,521 @@
+# Recipe Book PWA — Dev Rules (Cursor / Claude Code / Gemini Code)
+
+> **Applica SEMPRE queste regole durante lo sviluppo.** Non sono suggerimenti; sono vincoli di progetto.
+
+---
+
+## 🎯 Golden Rules (Non negoziabili)
+
+### 1. PROGRESS.md is source of truth
+
+- **Inizio sessione:** Leggi PROGRESS.md intero prima di qualsiasi coding
+- **Fine sessione:** Aggiorna PROGRESS.md con:
+  - Feature implementata (cosa è stato fatto)
+  - File modificati/nuovi (azioni: Nuovo, Modificato)
+  - Deploy status (✅ Prod | ⏳ Staging | ❌ Failed)
+  - Errori/blocchi riscontrati + soluzione
+  - Prossimi step (per sessione successiva)
+
+### 2. Deploy = Commit + Push + Wrangler Deploy + Pages Deploy
+
+**Una feature = un unit di work.**
+
+```bash
+# 1. Commit locale
+git add -A
+git commit -m "feat: brief description (2–5 parole)"
+
+# 2. Push
+git push origin main
+  ↓ (GitHub Actions CI runs)
+
+# 3. Deploy Worker
+wrangler deploy
+
+# 4. Deploy Frontend
+cd frontend && npm run build
+wrangler pages deploy dist/
+
+# 5. Test produzione
+# Apri https://recipe-book.pages.dev
+# Login, crea ricetta, sync Dropbox
+
+# 6. Aggiorna PROGRESS.md con timestamp ✅ Prod
+git add PROGRESS.md
+git commit -m "docs: update PROGRESS [SESSION DATE]"
+git push origin main
+```
+
+**Non è "done" se:**
+- ❌ Committo ma non pusho
+- ❌ Pusho ma non faccio deploy
+- ❌ Faccio deploy ma non testo
+- ❌ Testo ma non aggiorno PROGRESS.md
+
+### 3. No breaking changes to Dropbox schema
+
+**Se modifichi struttura JSON (recipes, users, shopping lists):**
+
+1. Crea migration script in `worker/src/lib/migrations/`
+2. Documenta in PROGRESS.md: "Migration required"
+3. Aggiungi versione schema (es. `schema_version: 2`)
+4. Scrivi rollback plan (backup Dropbox prima del deploy)
+
+**Esempi OK:**
+- ✅ Aggiungi campo opzionale: `"newField": null`
+- ✅ Rinomina campo con fallback: `recipe.author || recipe.authorId`
+- ❌ Cancella campo senza warn
+- ❌ Cambia type: `quantity: "400"` → `quantity: 400`
+
+### 4. No hardcoded API keys
+
+**Sempre:**
+```javascript
+// ✅ Giusto
+const apiKey = c.env.GEMINI_API_KEY
+const secret = c.env.JWT_SECRET
+
+// ❌ Sbagliato
+const apiKey = 'AIzaSyD...'  // Never!
+```
+
+**Setup:**
+- `.env` + `worker/.dev.vars` in `.gitignore`
+- Template: `.env.example`, `worker/.dev.vars.example`
+- Produzione: Cloudflare Dashboard → Environments → Variables/Secrets
+
+### 5. Rate limit awareness
+
+| Service | Limit | Mitigation |
+|---------|-------|-----------|
+| Gemini | 1M token/mese (free) | Queue requests, cache (Dropbox nutrition) |
+| FatSecret | ~100 req/mese (free) | Static DB fallback, cache |
+| Dropbox | 300 req / 15min | Batch requests, debounce (400ms+) |
+| YouTube Transcript | ~10 req/ora (free) | Cache transcript, fallback manuale |
+
+**Error handling:**
+```javascript
+// ✅ Esponenziale backoff su 429
+if (res.status === 429) {
+  const retryAfter = res.headers.get('Retry-After') || 2 ** attempt
+  await sleep(retryAfter * 1000)
+  return retry()
+}
+
+// ✅ Gemini fallback key
+if (error.code === 'QUOTA_EXCEEDED') {
+  return retryWithSecondKey(c.env.GEMINI_API_KEY_2)
+}
+```
+
+---
+
+## 📁 File Structure Conventions
+
+**STRICT PLACEMENT** (se file non è nel posto giusto, refactor):
+
+### Worker routes
+
+```
+worker/src/routes/
+├── auth.js                # OAuth, JWT exchange
+├── recipes.js             # GET/POST/PUT/DELETE /api/recipes*
+├── users.js               # User management (superUser only)
+├── gemini.js              # POST /api/gemini/recognize-recipe, parse, etc.
+├── scrapers.js            # POST /api/scraper/fetch-recipe (URL)
+├── youtube.js             # POST /api/youtube/parse-recipe (video)
+├── fatsecret.js           # POST /api/nutrition/search (ingredient)
+├── instagram.js           # (Future) POST /api/instagram/analyze
+└── health.js              # GET /api/health
+```
+
+### Worker lib (Utilities)
+
+```
+worker/src/lib/
+├── dropboxClient.js       # Dropbox API wrapper
+├── geminiClient.js        # Gemini API client (vision + text)
+├── fatsecretClient.js     # FatSecret API wrapper
+├── jwt.js                 # JWT sign/verify (riutilizza Hono/jwt)
+├── scrapers/
+│   ├── allrecipes.js      # CSS selectors + parsing
+│   ├── giallozafferano.js
+│   ├── bbcgoodfood.js
+│   └── _base.js           # Base scraper class
+├── youtubeTranscript.js   # YouTube Transcript API
+└── migrations/
+    ├── v1_to_v2.js        # Schema migration scripts
+    └── _base.js
+```
+
+### Frontend components
+
+```
+frontend/src/components/
+├── auth/
+│   ├── Login.jsx
+│   ├── DropboxCallback.jsx
+│   └── AuthGuard.jsx
+├── recipe/
+│   ├── RecipeList.jsx     # Grid/list view
+│   ├── RecipeDetail.jsx   # Single recipe + edit
+│   ├── RecipeForm.jsx     # Add/edit form (manual)
+│   ├── RecipeUpload.jsx   # Image upload → Gemini
+│   ├── NutritionCard.jsx  # Display calorie info
+│   └── RecipeScraper.jsx  # URL input → scraper
+├── shopping-list/
+│   ├── ShoppingList.jsx   # Main list view
+│   ├── ShoppingListItem.jsx
+│   ├── AddItemModal.jsx
+│   └── ShoppingListHistory.jsx
+├── settings/
+│   ├── Settings.jsx       # User preferences panel
+│   ├── Personalisation.jsx # Theme, font, color picker
+│   ├── AdminPanel.jsx     # (superUser only) manage users
+│   └── UserManager.jsx
+├── common/
+│   ├── Navbar.jsx
+│   ├── BottomNav.jsx      # Mobile tab bar
+│   ├── Sidebar.jsx        # Desktop/tablet sidebar
+│   ├── SearchBar.jsx
+│   └── LoadingState.jsx
+└── dashboard/
+    ├── Dashboard.jsx      # Home/overview
+    ├── RecentRecipes.jsx
+    ├── FamilyActivity.jsx
+    └── Stats.jsx
+```
+
+### Frontend hooks
+
+```
+frontend/src/hooks/
+├── useAuth.js             # useAuth() → { jwt, user, login(), logout() }
+├── useRecipes.js          # useRecipes() → { recipes, addRecipe(), editRecipe(), deleteRecipe() }
+├── useShoppingList.js     # useShoppingList(userId) → { items, addItem(), checkItem() }
+├── useNutrition.js        # useNutrition(ingredient) → { data, loading }
+├── useScraper.js          # useScraper() → { parseUrl(), loading, data }
+├── useGemini.js           # useGemini() → { recognizeImage(), parseText() }
+├── useDropbox.js          # useDropbox() → { upload(), download(), list() }
+└── useLocalStorage.js     # Persist to localStorage
+```
+
+### Frontend store (Zustand)
+
+```
+frontend/src/store/
+├── authStore.js           # jwt, user, login/logout
+├── recipeStore.js         # recipes[], searchFilter, selectedRecipe
+├── shoppingListStore.js   # items[], selectedList
+├── preferencesStore.js    # theme, font, language, colorAccent
+└── syncStore.js           # offline queue, sync status
+```
+
+### Frontend pages (Routes)
+
+```
+frontend/src/pages/
+├── Login.jsx              # /login
+├── DropboxCallback.jsx    # /dropbox-callback
+├── Home.jsx               # / (dopo login)
+├── Recipes.jsx            # /recipes
+├── RecipeDetail.jsx       # /recipes/:id
+├── AddRecipe.jsx          # /recipes/new
+├── ShoppingList.jsx       # /shopping-list
+├── Settings.jsx           # /settings
+├── AdminPanel.jsx         # /admin (superUser only)
+└── NotFound.jsx           # 404
+```
+
+---
+
+## ✅ Deployment Checklist
+
+**Prima di ogni `git push origin main`:**
+
+- [ ] Feature è completa (non work-in-progress)
+- [ ] PROGRESS.md aggiornato (feature + file changes + test notes)
+- [ ] Test locale: tutti gli user flow funzionano
+- [ ] Gemini/FatSecret/Dropbox API chiavi corrette in `.dev.vars`
+- [ ] No console.error/warn (solo logs intenzionali)
+- [ ] Responsive tested (mobile + tablet + desktop)
+- [ ] Offline mode testato (PWA; simulate offline in DevTools)
+- [ ] Accessibility check (ARIA labels, keyboard nav)
+- [ ] No breaking changes a Dropbox schema (oppure migration documentata)
+
+**Push + Deploy:**
+
+```bash
+git add -A
+git commit -m "feat: [feature] — [scope]"
+git push origin main
+
+# Attendi GitHub Actions CI (3–5 min)
+# Verifica: https://github.com/yourusername/recipe-book/actions
+
+# Deploy manual (se GA non funziona):
+wrangler deploy  # Worker
+cd frontend && npm run build
+wrangler pages deploy dist/
+
+# Test prod: https://recipe-book.pages.dev
+# 1. Login (Dropbox)
+# 2. Create recipe (manual or scraper)
+# 3. Check Dropbox sync
+# 4. Add shopping list item
+# 5. Settings (theme change)
+
+# Aggiorna PROGRESS.md con ✅ Prod (+ timestamp)
+git add PROGRESS.md
+git commit -m "docs: session update [DATE]"
+git push origin main
+```
+
+---
+
+## 🔧 Code Style & Conventions
+
+### JavaScript/React
+
+**Naming:**
+```javascript
+// ✅ Components
+const RecipeCard = () => { ... }
+const ShoppingListItem = () => { ... }
+
+// ✅ Hooks
+const useRecipes = () => { ... }
+const useScraper = () => { ... }
+
+// ✅ Functions
+const fetchRecipeFromUrl = async (url) => { ... }
+const calculateNutrition = (ingredients) => { ... }
+
+// ✅ Constants
+const DROPBOX_RECIPE_PATH = '/recipes'
+const GEMINI_MODEL = 'gemini-2.0-flash-vision'
+const CACHE_DURATION_MS = 86400000  // 24h
+```
+
+**Comments:**
+```javascript
+// ✅ Why, not what
+// Batch Dropbox requests to avoid rate limiting (300/15min)
+const batchRequests = async (items, batchSize = 10) => { ... }
+
+// ❌ Obvious
+const x = a + b  // add a and b
+```
+
+**Error handling:**
+```javascript
+// ✅ Specific catch + log
+try {
+  const data = await fetchRecipeData(url)
+  return data
+} catch (err) {
+  console.error('[fetchRecipeData]', err.message, { url, cause: err.cause })
+  throw new Error(`Failed to fetch recipe: ${err.message}`)
+}
+
+// ❌ Silent fail
+try { ... } catch (e) { }
+```
+
+### Worker (Hono)
+
+**Middleware order:**
+```javascript
+// ✅
+app.use(errorHandler)
+app.use(authMiddleware)
+app.use(rbacMiddleware)
+app.route('/api/recipes', recipeRoutes)
+
+// ❌ (RBAC must come after auth)
+app.use(rbacMiddleware)
+app.use(authMiddleware)
+```
+
+**Response format:**
+```javascript
+// ✅ Consistent JSON
+app.get('/api/recipes/:id', async (c) => {
+  const recipe = await getRecipe(c.req.param('id'))
+  if (!recipe) {
+    return c.json({ error: 'Recipe not found' }, 404)
+  }
+  return c.json({ success: true, data: recipe }, 200)
+})
+
+// ❌ Mixed formats
+return c.json(recipe)  // no wrapper
+```
+
+---
+
+## 🌐 Environment Variables
+
+### Local Dev
+
+**`frontend/.env.local`:**
+```
+VITE_WORKER_URL=http://localhost:8787
+VITE_DROPBOX_APP_KEY=xxxxxxx  # Dev Dropbox app
+VITE_DROPBOX_REDIRECT_URI=http://localhost:5173/dropbox-callback
+VITE_APP_ENV=development
+```
+
+**`worker/.dev.vars`:**
+```
+DROPBOX_APP_SECRET=xxxxxxx
+DROPBOX_APP_KEY=xxxxxxx
+GEMINI_API_KEY=xxxxxxx
+FATSECRET_OAUTH_CONSUMER_KEY=xxxxxxx  # (optional MVP)
+JWT_SECRET=dev-secret-do-not-use-in-prod
+```
+
+### Production (Cloudflare Dashboard)
+
+**Worker Secrets:**
+- `DROPBOX_APP_SECRET`
+- `DROPBOX_APP_KEY`
+- `GEMINI_API_KEY`
+- `FATSECRET_OAUTH_CONSUMER_KEY`
+- `FATSECRET_OAUTH_CONSUMER_SECRET`
+- `JWT_SECRET` (random 32-char)
+
+**Pages Environment Variables:**
+- `VITE_WORKER_URL=https://recipe-book-worker.{account}.workers.dev`
+- `VITE_DROPBOX_APP_KEY=xxxxxxx`  # Prod Dropbox app
+- `VITE_DROPBOX_REDIRECT_URI=https://recipe-book.pages.dev/dropbox-callback`
+- `VITE_APP_ENV=production`
+
+---
+
+## 🧪 Testing Checklist
+
+### Per feature:
+
+1. **Happy path (normal uso):**
+   - [ ] Feature funziona come atteso
+   - [ ] Dropbox sync avviene (check `/Apps/Recipe Book/` folder)
+   - [ ] Zustand state persista su reload
+
+2. **Edge cases:**
+   - [ ] Input vuoto / invalido (validation)
+   - [ ] Offline mode (PWA; DevTools Network → Offline)
+   - [ ] Rate limiting (429 → retry)
+   - [ ] Expired JWT (logout + re-login)
+
+3. **Multi-user:**
+   - [ ] superUser vede ricette altrui
+   - [ ] User vede solo ricette proprie + shared
+   - [ ] User non può delete ricetta altrui
+
+4. **Responsive:**
+   - [ ] Mobile (375px width)
+   - [ ] Tablet (768px)
+   - [ ] Desktop (1400px)
+
+### Before deploy:
+
+```bash
+# Build check
+npm run build
+
+# No console errors
+# Check DevTools Console (prod URL)
+
+# Dropbox OAuth
+# Try login flow (fresh browser; clear cookies)
+
+# Network tab
+# Check no exposed secrets
+# Verify Worker is responding
+
+# Lighthouse
+# Perf > 80, Accessibility > 90
+```
+
+---
+
+## 📝 Git Commit Message Format
+
+```
+type(scope): brief description
+
+Optional longer explanation (1–2 paragraphs)
+
+Fixes #ISSUE_NUMBER
+Related to PROGRESS.md Session X
+```
+
+**Examples:**
+
+```
+feat(recipes): implement web scraper for AllRecipes.com
+  - Added CSS selector parsing
+  - Integrated Gemini for validation
+  - Tests pass for 10+ recipes
+
+docs: update PROGRESS.md session 2
+  - Recipe CRUD complete
+  - Deploy verified prod
+  - Next: Shopping list feature
+
+fix(auth): handle Dropbox token refresh
+  - Implement 30-min before expiry refresh
+  - Update JWT + localStorage
+
+refactor(worker): consolidate Gemini prompts
+  - Moved to /worker/src/lib/prompts/
+  - Centralized for easier updates
+```
+
+---
+
+## 🚫 Common Pitfalls (Avoid!)
+
+| ❌ Pitfall | ✅ Solution |
+|-----------|-----------|
+| Commit senza push | `git push` SEMPRE dopo commit |
+| Push senza deploy | Fai deploy (worker + pages) e testa prod |
+| Modifica Dropbox schema senza migration | Crea script migration + doc in PROGRESS.md |
+| Hardcode API keys | Usa `c.env.KEY` (Worker) / `import.meta.env.VITE_KEY` (Frontend) |
+| Ignore rate limits | Implementa backoff, cache, queue |
+| No PROGRESS.md update | Feature non è "done" se PROGRESS.md non è aggiornato |
+| Test solo locale | SEMPRE testa prod URL prima di closeout |
+| No offline testing | PWA deve sync offline (simula Offline in DevTools) |
+| Forget .gitignore | `.env`, `.dev.vars`, `node_modules/` in `.gitignore` |
+
+---
+
+## 🔄 Session Workflow
+
+**Inizio:**
+1. Leggi PROGRESS.md (dalle ultime 2–3 sessioni)
+2. Check GitHub per issues/PRs aperte
+3. Verifica `.dev.vars` + `.env.local` aggiornati
+4. `git pull origin main`
+
+**Lavoro:**
+1. Branch feature: `git checkout -b feat/descriptive-name`
+2. Commit ogni 2–3 piccoli task
+3. Test locale + offline
+
+**Fine:**
+1. Test produzione (login, feature, Dropbox sync)
+2. Update PROGRESS.md (feature + files + deploy status)
+3. `git add -A && git commit && git push`
+4. Deploy: `wrangler deploy` + `wrangler pages deploy dist/`
+5. Final test prod
+6. Commit PROGRESS.md update
+7. Chiudi session
+
+---
+
+**Buon dev! 🚀**
+
+> Last updated: 08/09/2026  
+> Questions? Re-read PROGRESS.md — probabimente la risposta è lì.

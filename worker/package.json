@@ -1,0 +1,17 @@
+{
+  "name": "recipe-book-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev src/index.js --port 8787",
+    "deploy": "wrangler deploy",
+    "build": "echo 'No build step for workers'"
+  },
+  "dependencies": {
+    "hono": "^4.6.3"
+  },
+  "devDependencies": {
+    "wrangler": "^3.78.0"
+  }
+}
