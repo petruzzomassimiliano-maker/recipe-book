@@ -9,8 +9,8 @@
 
 | Modulo | Sezione principale | Stato |
 |--------|-------------------|-------|
-| **OAuth Dropbox PKCE** | «Sessione init» | ⏳ In Progress |
-| **Dropbox schema + Zustand** | «Sessione init» | ⏳ In Progress |
+| **OAuth Dropbox PKCE** | «Sessione init» | ✅ Done |
+| **Dropbox schema + Zustand** | «Sessione init» | ✅ Done |
 | **Recipe CRUD (manual add)** | «Sessione 2» | ⏳ Pending |
 | **Web Scraper (AllRecipes)** | «Sessione 3» | ⏳ Pending |
 | **Gemini recipe recognition** | «Sessione X» | ⏳ Pending |
@@ -61,14 +61,14 @@ Monorepo non esiste; partire da zero. Implementare struttura completa + OAuth PK
 | frontend/.env.example | **Nuovo** |
 | frontend/public/manifest.json | **Nuovo** |
 
-**Deploy:** ⏳ Pending (richiede credenziali Dropbox reali)
+**Deploy:** ✅ Locale setup (richiede credenziali Dropbox reali per test)
 
 ---
 
 ## Prossimi Passi
 
 - [ ] Utente compila worker/.dev.vars con credenziali Dropbox + Gemini
-- [ ] npm install in frontend + worker
+- [x] npm install in frontend + worker
 - [ ] Test OAuth locale: npm run dev (:5173) + wrangler dev (:8787)
 - [ ] Verifica Dropbox folder /Apps/Recipe Book/ creato
 - [ ] Sessione 2: Recipe CRUD + Dropbox schema
