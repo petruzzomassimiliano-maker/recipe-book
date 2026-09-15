@@ -20,13 +20,18 @@ app.use('*', logger())
 
 app.use('*', cors({
   origin: (origin) => {
-    // Allow localhost dev + production Pages domain
+    if (!origin) return origin
     const allowed = [
       'http://localhost:5173',
       'http://localhost:4173',
-      'https://recipe-book.pages.dev'
+      'https://recipe-book.pages.dev',
+      'https://recipe-book-ap1.pages.dev'
     ]
-    return allowed.includes(origin) ? origin : null
+    if (allowed.includes(origin)) return origin
+    // Preview / alternate Pages hostnames for this project
+    if (/^https:\/\/recipe-book([a-z0-9-]*)?\.pages\.dev$/.test(origin)) return origin
+    if (/^https:\/\/[a-z0-9-]+\.recipe-book(-[a-z0-9]+)?\.pages\.dev$/.test(origin)) return origin
+    return null
   },
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
