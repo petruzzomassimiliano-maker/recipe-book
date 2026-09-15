@@ -2,6 +2,30 @@
  * DropboxClient — Wrapper per le chiamate Dropbox API v2.
  * Usato dal Worker (lato server) per lettura/scrittura file JSON + immagini.
  */
+
+function dropboxErrorTag(data) {
+  if (!data || typeof data !== 'object') return null
+  if (typeof data.error === 'object') return data.error['.tag'] || null
+  return typeof data.error === 'string' ? data.error : null
+}
+
+function isDropboxAuthFailure(data, status) {
+  if (status === 401) return true
+  const tag = dropboxErrorTag(data)
+  if (tag === 'expired_access_token' || tag === 'invalid_access_token') return true
+  const text = `${data?.error_summary || ''} ${typeof data?.error === 'string' ? data.error : ''} ${JSON.stringify(data || {})}`
+  return /expired_access_token|invalid_access_token|invalid.?authorization|expired.?access.?token/i.test(text)
+}
+
+function throwDropboxError(data, context, status) {
+  if (isDropboxAuthFailure(data, status)) {
+    const err = new Error('DROPBOX_TOKEN_EXPIRED')
+    err.code = 'DROPBOX_TOKEN_EXPIRED'
+    throw err
+  }
+  throw new Error(`${context}: ${JSON.stringify(data)}`)
+}
+
 export class DropboxClient {
   constructor(accessToken) {
     this.accessToken = accessToken
@@ -22,8 +46,8 @@ export class DropboxClient {
       body: JSON.stringify(body)
     })
     if (res.status === 409) return null // Path not found — non-fatal
-    const data = await res.json()
-    if (!res.ok) throw new Error(`Dropbox API error [${endpoint}]: ${JSON.stringify(data)}`)
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throwDropboxError(data, `Dropbox API error [${endpoint}]`, res.status)
     return data
   }
 
@@ -33,12 +57,17 @@ export class DropboxClient {
       headers: {
         'Authorization': `Bearer ${this.accessToken}`,
         'Content-Type': 'application/octet-stream',
-        'Dropbox-API-Arg': JSON.stringify({ path, mode, autorename: false, mute: true })
+        'Dropbox-API-Arg': JSON.stringify({
+          path,
+          mode: typeof mode === 'string' ? { '.tag': mode } : mode,
+          autorename: false,
+          mute: true
+        })
       },
       body: typeof content === 'string' ? content : JSON.stringify(content)
     })
-    const data = await res.json()
-    if (!res.ok) throw new Error(`Dropbox upload error [${path}]: ${JSON.stringify(data)}`)
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throwDropboxError(data, `Dropbox upload error [${path}]`, res.status)
     return data
   }
 
@@ -52,8 +81,8 @@ export class DropboxClient {
     })
     if (res.status === 409) return null // File not found
     if (!res.ok) {
-      const errData = await res.json()
-      throw new Error(`Dropbox download error [${path}]: ${JSON.stringify(errData)}`)
+      const errData = await res.json().catch(() => ({}))
+      throwDropboxError(errData, `Dropbox download error [${path}]`, res.status)
     }
     return res.text()
   }
@@ -78,6 +107,9 @@ export class DropboxClient {
     try {
       await this.apiCall('/files/create_folder_v2', { path, autorename: false })
     } catch (err) {
+      if (err.code === 'DROPBOX_TOKEN_EXPIRED' || err.message === 'DROPBOX_TOKEN_EXPIRED') {
+        throw err
+      }
       // Ignore "folder already exists" error
       if (!err.message.includes('path/conflict/folder')) {
         console.warn(`[dropboxClient] createFolder warning [${path}]:`, err.message)
@@ -96,7 +128,13 @@ export class DropboxClient {
   }
 
   async deleteFile(path) {
-    return this.apiCall('/files/delete_v2', { path })
+    try {
+      return await this.apiCall('/files/delete_v2', { path })
+    } catch (err) {
+      // Already gone — treat as success (orphan index cleanup)
+      if (/path\/not_found|not_found/i.test(err.message || '')) return { deleted: false, missing: true }
+      throw err
+    }
   }
 
   async moveFile(fromPath, toPath) {

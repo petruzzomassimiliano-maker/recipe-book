@@ -3,6 +3,14 @@ import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import authRoutes from './routes/auth.js'
 import healthRoutes from './routes/health.js'
+import recipeRoutes from './routes/recipes.js'
+import scraperRoutes from './routes/scrapers.js'
+import shoppingRoutes from './routes/shopping.js'
+import geminiRoutes from './routes/gemini.js'
+import nutritionRoutes from './routes/nutrition.js'
+import youtubeRoutes from './routes/youtube.js'
+import usersRoutes from './routes/users.js'
+import settingsRoutes from './routes/settings.js'
 import { errorHandler } from './middleware/errorHandler.js'
 
 const app = new Hono()
@@ -20,7 +28,7 @@ app.use('*', cors({
     ]
     return allowed.includes(origin) ? origin : null
   },
-  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
   maxAge: 86400
@@ -31,6 +39,14 @@ app.onError(errorHandler)
 // ── Routes ──────────────────────────────────────────────────────────────────
 app.route('/api/health', healthRoutes)
 app.route('/api/auth', authRoutes)
+app.route('/api/recipes', recipeRoutes)
+app.route('/api/scraper', scraperRoutes)
+app.route('/api/shopping-list', shoppingRoutes)
+app.route('/api/gemini', geminiRoutes)
+app.route('/api/nutrition', nutritionRoutes)
+app.route('/api/youtube', youtubeRoutes)
+app.route('/api/users', usersRoutes)
+app.route('/api/settings', settingsRoutes)
 
 // ── 404 fallback ────────────────────────────────────────────────────────────
 app.notFound((c) => {

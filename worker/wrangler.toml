@@ -14,6 +14,6 @@ workers_dev = false
 #   DROPBOX_APP_SECRET
 #   DROPBOX_REDIRECT_URI
 #   GEMINI_API_KEY
+#   GEMINI_API_KEY_2              (optional — fallback if quota ends)
 #   JWT_SECRET
-#   FATSECRET_OAUTH_CONSUMER_KEY     (optional MVP)
-#   FATSECRET_OAUTH_CONSUMER_SECRET  (optional MVP)
+#   FAMILY_DROPBOX_REFRESH_TOKEN   (after family setup)

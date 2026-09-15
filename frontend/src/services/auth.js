@@ -3,86 +3,148 @@ import { generatePKCEPair } from '../utils/pkce.js'
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || ''
 const REDIRECT_URI = import.meta.env.VITE_DROPBOX_REDIRECT_URI || 'http://localhost:5173/dropbox-callback'
 
-/**
- * Initiates the Dropbox OAuth PKCE flow.
- * 1. Generates PKCE pair
- * 2. Saves code_verifier to localStorage
- * 3. Requests auth URL from Worker
- * 4. Redirects user to Dropbox
- */
-export async function initiateDropboxLogin() {
-  const { codeVerifier, codeChallenge } = await generatePKCEPair()
+export async function getAuthStatus() {
+  const res = await fetch(`${WORKER_URL}/api/auth/status`)
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Status failed')
+  return data.data
+}
 
-  // Save verifier — must be available after redirect back
+export async function loginWithPassword(username, password) {
+  const res = await fetch(`${WORKER_URL}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Login fallito')
+  return data
+}
+
+export async function changePassword(currentPassword, newPassword, jwt) {
+  const res = await fetch(`${WORKER_URL}/api/auth/change-password`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${jwt}`
+    },
+    body: JSON.stringify({ currentPassword, newPassword })
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Cambio password fallito')
+  return data
+}
+
+/** Start Dropbox OAuth for family setup / reconnect. */
+export async function initiateFamilyDropboxSetup({ forceReapprove = true } = {}) {
+  const { codeVerifier, codeChallenge } = await generatePKCEPair()
   localStorage.setItem('pkce_verifier', codeVerifier)
   localStorage.setItem('pkce_redirect_uri', REDIRECT_URI)
+  sessionStorage.setItem('auth_flow', 'family_setup')
 
   const params = new URLSearchParams({
     code_challenge: codeChallenge,
-    state: crypto.randomUUID()
+    state: crypto.randomUUID(),
+    force_reapprove: forceReapprove ? 'true' : 'false'
   })
-
-  // Ask Worker for auth URL (Worker keeps APP_KEY + SECRET server-side)
   const res = await fetch(`${WORKER_URL}/api/auth/authorize?${params}`)
   if (!res.ok) {
     const err = await res.json()
     throw new Error(err.error || 'Failed to get Dropbox auth URL')
   }
-
   const { authUrl } = await res.json()
   window.location.href = authUrl
 }
 
-/**
- * Exchanges the OAuth callback code for tokens.
- * Called from DropboxCallback page after Dropbox redirects back.
- * Returns { jwt, dropboxToken, user }
- */
-export async function exchangeDropboxCode(code) {
+export async function completeFamilyDropboxSetup(code) {
   const codeVerifier = localStorage.getItem('pkce_verifier')
   const redirectUri = localStorage.getItem('pkce_redirect_uri') || REDIRECT_URI
+  if (!codeVerifier) throw new Error('PKCE verifier missing')
 
-  if (!codeVerifier) {
-    throw new Error('PKCE verifier missing — localStorage may have been cleared')
-  }
-
-  const res = await fetch(`${WORKER_URL}/api/auth/exchange`, {
+  const res = await fetch(`${WORKER_URL}/api/auth/setup/dropbox`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code, codeVerifier, redirectUri })
   })
-
   const data = await res.json()
-  if (!res.ok) throw new Error(data.error || 'Token exchange failed')
+  if (!res.ok) throw new Error(data.error || 'Setup Dropbox fallito')
 
-  // Cleanup PKCE state
   localStorage.removeItem('pkce_verifier')
   localStorage.removeItem('pkce_redirect_uri')
+  sessionStorage.removeItem('auth_flow')
 
-  return data
+  return storeFamilySetupResult(data.data)
 }
 
-/**
- * Refreshes Dropbox access token using stored refresh token.
- */
-export async function refreshDropboxToken(refreshToken) {
-  const res = await fetch(`${WORKER_URL}/api/auth/refresh`, {
+/** Import an existing Dropbox refresh token (same Dropbox app / App folder). */
+export async function importFamilyRefreshToken(refreshToken) {
+  const res = await fetch(`${WORKER_URL}/api/auth/setup/import-refresh`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ refreshToken })
   })
   const data = await res.json()
-  if (!res.ok) throw new Error(data.error || 'Token refresh failed')
+  if (!res.ok) throw new Error(data.error || 'Import refresh fallito')
+  return storeFamilySetupResult(data.data)
+}
+
+function storeFamilySetupResult(payload) {
+  if (payload?.setupTicket) {
+    sessionStorage.setItem('family_setup_ticket', payload.setupTicket)
+  }
+  if (payload?.familyDropboxRefreshToken) {
+    sessionStorage.setItem('family_refresh_token', payload.familyDropboxRefreshToken)
+  }
+  if (payload?.envHint) {
+    sessionStorage.setItem('family_env_hint', payload.envHint)
+  }
+  return payload
+}
+
+export async function createOwnerAccount(payload) {
+  const setupTicket = payload.setupTicket || sessionStorage.getItem('family_setup_ticket')
+  const familyDropboxRefreshToken =
+    payload.familyDropboxRefreshToken || sessionStorage.getItem('family_refresh_token')
+
+  const res = await fetch(`${WORKER_URL}/api/auth/setup/owner`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ...payload,
+      setupTicket,
+      familyDropboxRefreshToken
+    })
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Creazione owner fallita')
+  sessionStorage.removeItem('family_setup_ticket')
   return data
 }
 
-/**
- * Calls Worker logout endpoint (optional token revocation).
- */
+export async function getInvitePreview(token) {
+  const WORKER_URL = import.meta.env.VITE_WORKER_URL || ''
+  const res = await fetch(`${WORKER_URL}/api/auth/invite/${encodeURIComponent(token)}`)
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Invito non valido')
+  return data.data
+}
+
+export async function acceptInvite(token, password) {
+  const WORKER_URL = import.meta.env.VITE_WORKER_URL || ''
+  const res = await fetch(`${WORKER_URL}/api/auth/accept-invite`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, password })
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Attivazione fallita')
+  return data
+}
+
 export async function logoutFromWorker() {
   try {
     await fetch(`${WORKER_URL}/api/auth/logout`, { method: 'POST' })
   } catch {
-    // Non-fatal; client-side cleanup is what matters
+    // ignore
   }
 }

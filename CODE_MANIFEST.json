@@ -1,0 +1,21 @@
+{
+  "session": "init-oauth-dropbox",
+  "description": "OAuth Dropbox PKCE boilerplate",
+  "files": [
+    {
+      "path": "worker/src/routes/auth.js",
+      "description": "OAuth endpoints (authorize, exchange)",
+      "status": "implemented"
+    },
+    {
+      "path": "worker/src/lib/dropboxClient.js",
+      "description": "Dropbox API wrapper",
+      "status": "implemented"
+    },
+    {
+      "path": "frontend/src/store/authStore.js",
+      "description": "Zustand auth store",
+      "status": "implemented"
+    }
+  ]
+}

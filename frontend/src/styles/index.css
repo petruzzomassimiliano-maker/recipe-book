@@ -2,24 +2,24 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── CSS Variables (Material Design 3) ── */
 :root {
   --color-primary: #FF6B6B;
   --color-primary-light: #FF8A80;
-  --color-secondary: #4ECDC4;
-  --color-tertiary: #FFD93D;
-  --color-surface: #FAFAFA;
-  --color-surface-container: #F3F3F3;
-  --color-on-surface: #1C1C1C;
-  --color-on-surface-muted: #6B7280;
-  --color-border: #E5E7EB;
+  --color-secondary: #2A9D8F;
+  --color-tertiary: #E9C46A;
+  --color-surface: #F7F5F2;
+  --color-surface-container: #FFFFFF;
+  --color-on-surface: #1C1917;
+  --color-on-surface-muted: #78716C;
+  --color-border: #E7E5E4;
   --radius-md: 12px;
   --radius-lg: 16px;
   --radius-xl: 24px;
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.10), 0 2px 4px rgba(0,0,0,0.04);
-  --shadow-lg: 0 10px 32px rgba(0,0,0,0.12);
-  --font-family: 'Inter', system-ui, sans-serif;
+  --shadow-sm: 0 1px 2px rgba(28, 25, 23, 0.04), 0 1px 3px rgba(28, 25, 23, 0.06);
+  --shadow-md: 0 4px 14px rgba(28, 25, 23, 0.08);
+  --shadow-lg: 0 12px 36px rgba(28, 25, 23, 0.12);
+  --font-family: 'Outfit', system-ui, sans-serif;
+  --font-display: 'Fraunces', Georgia, serif;
   --transition: 0.2s ease;
 }
 
@@ -27,12 +27,11 @@
   --color-surface: #121212;
   --color-surface-container: #1E1E1E;
   --color-on-surface: #E8E8E8;
-  --color-on-surface-muted: #9CA3AF;
+  --color-on-surface-muted: #A8A29E;
   --color-border: #2D2D2D;
   --color-primary: #FF8A80;
 }
 
-/* ── Base ── */
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -46,13 +45,21 @@ html {
 body {
   font-family: var(--font-family);
   background-color: var(--color-surface);
+  background-image:
+    radial-gradient(ellipse 80% 50% at 0% -10%, rgba(255, 107, 107, 0.08), transparent),
+    radial-gradient(ellipse 60% 40% at 100% 0%, rgba(42, 157, 143, 0.07), transparent);
+  background-attachment: fixed;
   color: var(--color-on-surface);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   min-height: 100dvh;
 }
 
-/* ── Utilities ── */
+.font-display {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+}
+
 @layer components {
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl
@@ -63,30 +70,37 @@ body {
 
   .btn-secondary {
     @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl
-           font-semibold transition-all duration-200 border
-           bg-transparent hover:bg-gray-100 active:scale-95
+           font-semibold transition-all duration-200 border border-stone-200
+           bg-white/80 hover:bg-white active:scale-95 text-stone-700
            focus:outline-none focus:ring-2 focus:ring-primary/30;
   }
 
   .card {
     @apply bg-white dark:bg-surface-container rounded-2xl shadow-sm
-           border border-gray-100 dark:border-gray-800
+           border border-stone-200/80 dark:border-gray-800
            transition-shadow hover:shadow-md;
   }
 
   .input-field {
-    @apply w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700
-           bg-white dark:bg-surface-container text-on-surface
+    @apply w-full px-4 py-3 rounded-xl border border-stone-200 dark:border-gray-700
+           bg-white dark:bg-surface-container text-stone-900
            focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary
-           transition-colors placeholder:text-gray-400;
+           transition-colors placeholder:text-stone-400;
   }
 
   .page-container {
     @apply max-w-6xl mx-auto px-4 py-6 sm:px-6 lg:px-8;
   }
+
+  .page-title {
+    @apply font-display text-3xl sm:text-4xl font-semibold text-stone-900 tracking-tight;
+  }
+
+  .section-title {
+    @apply font-display text-xl font-semibold text-stone-900;
+  }
 }
 
-/* ── Scrollbar ── */
 ::-webkit-scrollbar {
   width: 6px;
 }
@@ -94,14 +108,13 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #D1D5DB;
+  background: #D6D3D1;
   border-radius: 99px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #9CA3AF;
+  background: #A8A29E;
 }
 
-/* ── Animations ── */
 @keyframes spin {
   to { transform: rotate(360deg); }
 }

@@ -1,7 +1,9 @@
+import { verifyJWT, jwtSecret } from '../lib/jwt.js'
+import { getFamilyDropboxClient } from '../lib/familyDropbox.js'
+import { findUserById, loadUsers, ROLES } from '../lib/users.js'
+
 /**
- * JWT auth middleware for Hono.
- * Verifies Bearer token from Authorization header.
- * Attaches decoded payload to c.set('user', payload).
+ * JWT auth + inject family Dropbox client (server-side token).
  */
 export const authMiddleware = async (c, next) => {
   const authHeader = c.req.header('Authorization')
@@ -9,19 +11,49 @@ export const authMiddleware = async (c, next) => {
     return c.json({ error: 'Unauthorized — missing or invalid token' }, 401)
   }
 
-  const token = authHeader.slice(7) // Remove "Bearer "
-  const secret = c.env.JWT_SECRET || 'dev-secret-change-me'
-
+  const token = authHeader.slice(7)
   try {
-    const payload = await verifyJWT(token, secret)
+    const payload = await verifyJWT(token, jwtSecret(c.env))
     if (!payload) return c.json({ error: 'Unauthorized — invalid JWT' }, 401)
-
-    // Check expiry
     if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
       return c.json({ error: 'Unauthorized — token expired' }, 401)
     }
 
+    // Legacy superUser → treat as owner-equivalent staff
+    if (payload.role === 'superUser') payload.role = ROLES.OWNER
+    if (payload.role === 'user') payload.role = ROLES.MEMBER
+
+    let dbx
+    try {
+      dbx = await getFamilyDropboxClient(c.env)
+    } catch (err) {
+      return c.json(
+        { error: err.message, code: err.code || 'FAMILY_DROPBOX_NOT_CONFIGURED' },
+        err.status || 503
+      )
+    }
+
+    // Soft-check active user when possible
+    try {
+      const users = await loadUsers(dbx)
+      const row = findUserById(users, payload.userId)
+      if (row && row.active === false) {
+        return c.json({ error: 'Account disattivato' }, 403)
+      }
+      if (row) {
+        payload.role = row.role
+        payload.mustChangePassword = Boolean(row.mustChangePassword)
+        payload.name = row.displayName || row.username
+        payload.username = row.username
+      }
+    } catch {
+      // continue with JWT claims
+    }
+
     c.set('user', payload)
+    c.set('dbx', dbx)
+    // Back-compat for routes still reading dropboxToken
+    c.set('dropboxToken', dbx.accessToken)
     await next()
   } catch (err) {
     console.error('[authMiddleware]', err.message)
@@ -29,38 +61,18 @@ export const authMiddleware = async (c, next) => {
   }
 }
 
-/**
- * Verify HS256 JWT using Web Crypto API.
- */
-async function verifyJWT(token, secret) {
-  const parts = token.split('.')
-  if (parts.length !== 3) return null
-
-  const [headerB64, payloadB64, sigB64] = parts
-  const data = `${headerB64}.${payloadB64}`
-
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['verify']
-  )
-
-  const sig = Uint8Array.from(
-    atob(sigB64.replace(/-/g, '+').replace(/_/g, '/')),
-    (c) => c.charCodeAt(0)
-  )
-
-  const valid = await crypto.subtle.verify(
-    'HMAC',
-    key,
-    sig,
-    new TextEncoder().encode(data)
-  )
-
-  if (!valid) return null
-
-  const payload = JSON.parse(atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/')))
-  return payload
+/** Optional auth — attaches user if present. */
+export const optionalAuthMiddleware = async (c, next) => {
+  const authHeader = c.req.header('Authorization')
+  if (authHeader?.startsWith('Bearer ')) {
+    try {
+      const payload = await verifyJWT(authHeader.slice(7), jwtSecret(c.env))
+      if (payload?.exp && payload.exp >= Math.floor(Date.now() / 1000)) {
+        c.set('user', payload)
+      }
+    } catch {
+      // ignore
+    }
+  }
+  await next()
 }

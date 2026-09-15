@@ -1,104 +1,193 @@
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.js'
+import { useRecipes } from '../hooks/useRecipes.js'
+
+const difficultyLabel = {
+  easy: 'Facile',
+  medium: 'Media',
+  hard: 'Difficile'
+}
+
+const FEATURED_LABEL = {
+  random: 'Ricetta a caso',
+  latest: 'Ultima aggiornata',
+  oldest: 'Più vecchia'
+}
+
+function pickFeatured(recipes, mode, randomId) {
+  if (!recipes?.length) return null
+  if (mode === 'latest') {
+    return [...recipes].sort((a, b) => {
+      const ta = Date.parse(a.updatedAt || 0) || 0
+      const tb = Date.parse(b.updatedAt || 0) || 0
+      return tb - ta
+    })[0]
+  }
+  if (mode === 'oldest') {
+    return [...recipes].sort((a, b) => {
+      const ta = Date.parse(a.updatedAt || a.createdAt || 0) || 0
+      const tb = Date.parse(b.updatedAt || b.createdAt || 0) || 0
+      return ta - tb
+    })[0]
+  }
+  if (randomId) {
+    return recipes.find((r) => r.id === randomId) || recipes[0]
+  }
+  return recipes[Math.floor(Math.random() * recipes.length)]
+}
 
 export default function Home() {
-  const { user, logout } = useAuth()
+  const { user } = useAuth()
+  const navigate = useNavigate()
+  const { recipes, loadRecipes, isLoading } = useRecipes()
+  const [randomId, setRandomId] = useState(null)
+
+  useEffect(() => {
+    loadRecipes()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const firstName =
+    (user?.displayName || user?.name || user?.username || 'Chef').trim().split(/\s+/)[0] || 'Chef'
+
+  const featuredMode = user?.preferences?.featuredMode || 'random'
+
+  useEffect(() => {
+    if (featuredMode !== 'random' || !recipes?.length) {
+      setRandomId(null)
+      return
+    }
+    const pick = recipes[Math.floor(Math.random() * recipes.length)]
+    setRandomId(pick.id)
+  }, [recipes, featuredMode])
+
+  const featured = useMemo(
+    () => pickFeatured(recipes, featuredMode, randomId),
+    [recipes, featuredMode, randomId]
+  )
 
   const quickActions = [
-    { emoji: '📸', label: 'Foto → Ricetta', desc: 'Carica immagine · Gemini riconosce', color: 'from-orange-400 to-red-400', disabled: true },
-    { emoji: '🔗', label: 'URL → Ricetta', desc: 'Incolla link · scraper auto', color: 'from-teal-400 to-cyan-400', disabled: true },
-    { emoji: '✍️', label: 'Aggiungi manuale', desc: 'Form guidato', color: 'from-yellow-400 to-orange-400', disabled: true },
-    { emoji: '🛒', label: 'Lista spesa', desc: 'Ingredienti automatici', color: 'from-purple-400 to-indigo-400', disabled: true }
+    {
+      label: 'Da URL / YouTube',
+      desc: 'Sito oppure video ricetta',
+      to: '/recipes/import',
+      accent: 'bg-teal-50 text-teal-800 border-teal-100'
+    },
+    {
+      label: 'Manuale',
+      desc: 'Scrivi la ricetta tu',
+      to: '/recipes/new',
+      accent: 'bg-orange-50 text-orange-900 border-orange-100'
+    },
+    {
+      label: 'Lista spesa',
+      desc: 'Ingredienti da fare',
+      to: '/shopping-list',
+      accent: 'bg-stone-50 text-stone-800 border-stone-200'
+    }
   ]
 
   return (
-    <div className="min-h-dvh bg-surface dark:bg-surface-dark">
-      {/* Header */}
-      <header className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-100 dark:border-gray-800 sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">🍳</span>
-            <span className="font-bold text-lg text-gray-900 dark:text-white">Recipe Book</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex flex-col text-right">
-              <span className="text-sm font-medium text-gray-900 dark:text-white">{user?.name}</span>
-              <span className="text-xs text-gray-400">{user?.email}</span>
-            </div>
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center text-white font-bold text-sm shadow">
-              {user?.name?.[0]?.toUpperCase() || '?'}
-            </div>
-            <button
-              id="btn-logout"
-              onClick={logout}
-              className="text-sm text-gray-500 hover:text-gray-900 dark:hover:text-white px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-            >
-              Esci
-            </button>
+    <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-10 animate-fade-in">
+      <section className="mb-8 sm:mb-10">
+        <div className="relative overflow-hidden rounded-[1.75rem] border border-stone-200/80 bg-white shadow-sm">
+          <div
+            aria-hidden
+            className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(255,107,107,0.16),_transparent_55%),radial-gradient(ellipse_at_bottom_left,_rgba(42,157,143,0.12),_transparent_50%)]"
+          />
+          <div className="relative px-6 sm:px-10 py-8 sm:py-11">
+            <h1 className="font-display text-3xl sm:text-5xl font-semibold text-stone-900 tracking-tight leading-[1.15]">
+              Ciao, {firstName}, cosa cuciniamo oggi?
+            </h1>
           </div>
         </div>
-      </header>
+      </section>
 
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 animate-fade-in">
-        {/* Welcome banner */}
-        <section className="mb-8">
-          <div className="rounded-3xl bg-gradient-to-br from-primary to-primary-dark p-6 sm:p-8 text-white shadow-lg relative overflow-hidden">
-            <div aria-hidden className="absolute -right-8 -top-8 w-40 h-40 bg-white/10 rounded-full" />
-            <div aria-hidden className="absolute -right-4 -bottom-8 w-24 h-24 bg-white/5 rounded-full" />
-            <div className="relative">
-              <p className="text-sm font-medium opacity-80 mb-1">
-                Ciao {user?.name?.split(' ')[0] || 'Chef'} 👋
-              </p>
-              <h1 className="text-2xl sm:text-3xl font-bold mb-3">
-                Cosa cuciniamo oggi?
-              </h1>
-              <p className="text-sm opacity-70">
-                Aggiungi la tua prima ricetta · Usa IA per riconoscerla da foto o URL
-              </p>
-            </div>
-          </div>
-        </section>
+      <section className="mb-10">
+        <div className="flex items-end justify-between mb-4 gap-3">
+          <h2 className="section-title">In evidenza</h2>
+          <Link to="/recipes" className="text-sm text-primary font-semibold hover:underline">
+            Vedi tutte
+          </Link>
+        </div>
 
-        {/* Quick actions */}
-        <section className="mb-8">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Aggiungi ricetta</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {quickActions.map((action) => (
-              <button
-                key={action.label}
-                disabled={action.disabled}
-                className={`
-                  relative p-4 rounded-2xl text-left transition-all duration-200
-                  ${action.disabled
-                    ? 'bg-gray-50 dark:bg-gray-800/50 opacity-60 cursor-not-allowed'
-                    : 'bg-white dark:bg-gray-800 shadow-sm hover:shadow-md hover:scale-[1.02] active:scale-95 cursor-pointer'
-                  }
-                `}
-              >
-                <div className={`inline-flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br ${action.color} mb-3 shadow-sm`}>
-                  <span className="text-xl">{action.emoji}</span>
-                </div>
-                <div className="font-semibold text-sm text-gray-900 dark:text-white">{action.label}</div>
-                <div className="text-xs text-gray-400 mt-0.5">{action.desc}</div>
-                {action.disabled && (
-                  <span className="absolute top-2 right-2 text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">Presto</span>
-                )}
-              </button>
-            ))}
-          </div>
-        </section>
-
-        {/* Empty state */}
-        <section>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Le tue ricette</h2>
-          <div className="rounded-3xl bg-white dark:bg-gray-800 border border-dashed border-gray-200 dark:border-gray-700 p-12 text-center">
-            <div className="text-6xl mb-4">🍽️</div>
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Nessuna ricetta ancora</h3>
-            <p className="text-gray-400 text-sm max-w-sm mx-auto">
-              Aggiungi la tua prima ricetta usando le azioni rapide sopra, oppure incolla un URL da AllRecipes, Giallozafferano e altri siti.
+        {isLoading && !featured ? (
+          <p className="text-stone-400">Caricamento…</p>
+        ) : !featured ? (
+          <div className="rounded-3xl bg-white border border-dashed border-stone-200 p-10 text-center">
+            <h3 className="font-display text-xl font-semibold text-stone-900 mb-2">Nessuna ricetta ancora</h3>
+            <p className="text-stone-500 text-sm max-w-sm mx-auto leading-relaxed mb-4">
+              Aggiungi la prima ricetta o importane una da URL.
             </p>
+            <button type="button" className="btn-primary !py-2.5 !px-5" onClick={() => navigate('/recipes/import')}>
+              Importa
+            </button>
           </div>
-        </section>
-      </main>
-    </div>
+        ) : (
+          <Link
+            to={`/recipes/${featured.id}`}
+            className="group block relative overflow-hidden rounded-[1.75rem] border border-stone-200/80 bg-stone-900 shadow-sm min-h-[280px] sm:min-h-[380px]"
+          >
+            {featured.imageUrl ? (
+              <img
+                src={featured.imageUrl}
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"
+              />
+            ) : (
+              <div
+                aria-hidden
+                className="absolute inset-0 bg-gradient-to-br from-primary/90 via-stone-800 to-teal-900"
+              />
+            )}
+            <div className="absolute inset-0 bg-gradient-to-t from-stone-950/90 via-stone-950/35 to-transparent" />
+            <div className="relative flex h-full min-h-[280px] sm:min-h-[380px] flex-col justify-end p-6 sm:p-10">
+              <p className="text-xs font-semibold uppercase tracking-wider text-white/70 mb-2">
+                {FEATURED_LABEL[featuredMode] || FEATURED_LABEL.random}
+              </p>
+              <h3 className="font-display text-3xl sm:text-4xl lg:text-5xl font-semibold text-white tracking-tight leading-[1.1] max-w-3xl">
+                {featured.title}
+              </h3>
+              <p className="mt-3 text-sm sm:text-base text-white/80 flex flex-wrap gap-x-2 gap-y-1">
+                {featured.servings ? <span>{featured.servings} porzioni</span> : null}
+                {featured.servings && (featured.difficulty || featured.caloriesPerServing != null) ? (
+                  <span className="text-white/40">·</span>
+                ) : null}
+                {featured.difficulty ? (
+                  <span>{difficultyLabel[featured.difficulty] || featured.difficulty}</span>
+                ) : null}
+                {featured.caloriesPerServing != null ? (
+                  <>
+                    <span className="text-white/40">·</span>
+                    <span>{featured.caloriesPerServing} kcal</span>
+                  </>
+                ) : null}
+              </p>
+              <span className="mt-5 inline-flex w-fit items-center gap-1.5 rounded-xl bg-white text-stone-900 text-sm font-semibold px-4 py-2.5 group-hover:bg-primary group-hover:text-white transition-colors">
+                Apri ricetta
+                <span aria-hidden>→</span>
+              </span>
+            </div>
+          </Link>
+        )}
+      </section>
+
+      <section>
+        <h2 className="section-title mb-4">Inizia da qui</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {quickActions.map((action) => (
+            <button
+              key={action.label}
+              type="button"
+              onClick={() => navigate(action.to)}
+              className={`text-left rounded-2xl border px-5 py-4 transition-all hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 ${action.accent}`}
+            >
+              <div className="font-semibold text-[15px]">{action.label}</div>
+              <div className="text-sm opacity-70 mt-1">{action.desc}</div>
+            </button>
+          ))}
+        </div>
+      </section>
+    </main>
   )
 }
