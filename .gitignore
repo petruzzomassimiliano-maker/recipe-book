@@ -29,3 +29,4 @@ yarn-error.log*
 
 # Cloudflare
 .wrangler/
+.tools/
