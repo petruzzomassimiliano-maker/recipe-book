@@ -273,7 +273,7 @@ export default function RecipeForm({
       <section className={sectionClass}>
         <h2 className={sectionTitleClass}>Dettagli</h2>
 
-        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_280px] gap-5 lg:gap-8 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.35fr)_minmax(16rem,0.85fr)] gap-5 lg:gap-8 items-start">
           <div className="space-y-4 lg:space-y-5 min-w-0">
             <label className="block">
               <span className={fieldLabelClass}>Titolo *</span>
@@ -322,8 +322,8 @@ export default function RecipeForm({
               </label>
             )}
 
-            {/* Related meta — 2×2 until xl so labels/values don’t crush */}
-            <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 lg:gap-4">
+            {/* Related meta — 2×2 on narrow, 4 across on desktop */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 lg:gap-4">
               <label className="block min-w-0">
                 <span className={fieldLabelClass}>Porzioni</span>
                 <input
@@ -484,7 +484,8 @@ export default function RecipeForm({
         </div>
       </section>
 
-      {/* Ingredienti then Passi — full width (avoids crushing name column) */}
+      {/* Ingredienti | Passi — 2 colonne solo desktop (lg+); mobile in colonna */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-start">
       <section className={sectionClass}>
         <div className="flex items-center justify-between gap-2">
           <h2 className={sectionTitleClass}>Ingredienti</h2>
@@ -498,7 +499,7 @@ export default function RecipeForm({
         </div>
 
         <div
-          className="hidden md:grid grid-cols-[minmax(0,1fr)_6rem_7rem_2.75rem] gap-3 px-1 text-[11px] font-semibold uppercase tracking-wide text-stone-400"
+          className="hidden md:grid grid-cols-[minmax(0,1fr)_5.5rem_6.5rem_2.75rem] gap-2.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-stone-400"
           aria-hidden
         >
           <span>Nome</span>
@@ -555,7 +556,7 @@ export default function RecipeForm({
               </div>
 
               {/* Desktop: explicit 4-column grid (no display:contents) */}
-              <div className="hidden md:grid grid-cols-[minmax(0,1fr)_6rem_7rem_2.75rem] gap-3 items-center py-2 border-b border-stone-100">
+              <div className="hidden md:grid grid-cols-[minmax(0,1fr)_5.5rem_6.5rem_2.75rem] gap-2.5 items-center py-2 border-b border-stone-100">
                 <input
                   className="input-field !min-h-[44px] !py-2 min-w-0 !w-full"
                   placeholder="Nome ingrediente"
@@ -620,38 +621,41 @@ export default function RecipeForm({
           </button>
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-3 lg:space-y-4">
           {form.steps.map((row, idx) => (
             <div
               key={idx}
-              className="flex gap-3 items-start rounded-xl border border-stone-100 bg-stone-50/40 p-3"
+              className="rounded-xl border border-stone-100 bg-stone-50/40 p-3 lg:p-4 space-y-2"
             >
-              <span className="shrink-0 inline-flex items-center justify-center w-8 h-8 mt-1 rounded-full bg-primary/10 text-primary text-sm font-semibold">
-                {idx + 1}
-              </span>
+              <div className="flex items-center justify-between gap-2">
+                <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-primary/10 text-primary text-xs font-semibold">
+                  {idx + 1}
+                </span>
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded-lg text-stone-400 hover:text-red-600 hover:bg-red-50"
+                  onClick={() => update({ steps: form.steps.filter((_, i) => i !== idx) })}
+                  disabled={form.steps.length === 1}
+                  aria-label={`Rimuovi passo ${idx + 1}`}
+                >
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+                    <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
+                  </svg>
+                </button>
+              </div>
               <AutoGrowTextarea
-                className="flex-1 min-w-0 min-h-[72px] leading-[1.65] text-base"
+                className="w-full min-h-[72px] lg:min-h-[88px] leading-[1.65] text-base"
                 minPx={72}
                 placeholder="Cosa fare in questo passo…"
                 value={row.instruction}
                 onChange={(e) => setStep(idx, e.target.value)}
                 aria-label={`Passo ${idx + 1}`}
               />
-              <button
-                type="button"
-                className="shrink-0 inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded-lg text-stone-400 hover:text-red-600 hover:bg-red-50"
-                onClick={() => update({ steps: form.steps.filter((_, i) => i !== idx) })}
-                disabled={form.steps.length === 1}
-                aria-label={`Rimuovi passo ${idx + 1}`}
-              >
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
-                  <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
-                </svg>
-              </button>
             </div>
           ))}
         </div>
       </section>
+      </div>
 
       {/* —— Note —— */}
       <section className={sectionClass}>
