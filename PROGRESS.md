@@ -674,6 +674,8 @@ Import: dose lasciata nel nome, es. `piselli 300 g freschi o surgelati` → Qty/
 
 ### Fix follow-up
 - Import usava `max-w-3xl` e schiacciava il form desktop → allineato a Edit (`lg:max-w-6xl` + `pageTitle`)
+- Ripristinato **Ingredienti | Passi a 2 colonne su `lg+`** (Nuova / Modifica / Import condividono `RecipeForm`); mobile resta in colonna
+- Griglia riga ingredienti esplicita (niente `display:contents`) per evitare nomi verticali
 - Deploy Cloud Agent: il secret `CLOUDFLARE_API_TOKEN` in realtà è una **Global API Key** → wrangler va con `CLOUDFLARE_EMAIL` + `CLOUDFLARE_API_KEY` (non Bearer token)
 
 ### Todo / note
