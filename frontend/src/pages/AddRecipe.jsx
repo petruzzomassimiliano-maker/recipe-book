@@ -12,6 +12,7 @@ export default function AddRecipe() {
   const [loadError, setLoadError] = useState(null)
 
   const persistKey = id ? draftKey(`recipe-form:edit:${id}`) : draftKey('recipe-form:new')
+  const pageTitle = id ? 'Modifica ricetta' : 'Nuova ricetta'
 
   useEffect(() => {
     if (!id) {
@@ -34,7 +35,7 @@ export default function AddRecipe() {
 
   if (loadError) {
     return (
-      <main className="max-w-3xl mx-auto px-4 py-8">
+      <main className="max-w-3xl lg:max-w-6xl mx-auto px-4 py-8">
         <p className="text-red-600">{loadError}</p>
       </main>
     )
@@ -42,20 +43,20 @@ export default function AddRecipe() {
 
   if (id && !ready) {
     return (
-      <main className="max-w-3xl mx-auto px-4 py-8">
-        <p className="text-gray-400">Caricamento ricetta…</p>
+      <main className="max-w-3xl lg:max-w-6xl mx-auto px-4 py-8">
+        <p className="text-stone-400">Caricamento ricetta…</p>
       </main>
     )
   }
 
   return (
-    <main className="max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-8 animate-fade-in">
-      <h1 className="page-title mb-5 sm:mb-6">
-        {id ? 'Modifica ricetta' : 'Nuova ricetta'}
-      </h1>
+    <main className="max-w-3xl lg:max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8 animate-fade-in">
+      {/* Mobile title only — desktop title lives in sticky form bar */}
+      <h1 className="page-title mb-5 sm:mb-6 lg:hidden">{pageTitle}</h1>
       <RecipeForm
         key={id || 'new'}
         persistKey={persistKey}
+        pageTitle={pageTitle}
         initialRecipe={id ? selectedRecipe : null}
         onSubmit={handleSubmit}
         onCancel={() => navigate(id ? `/recipes/${id}` : '/recipes')}
