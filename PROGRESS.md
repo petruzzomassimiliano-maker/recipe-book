@@ -12,17 +12,18 @@
 | **OAuth Dropbox PKCE** | «Sessione init» | ✅ Localhost verified |
 | **Dropbox schema + Zustand** | «Sessione init» | ✅ Localhost verified |
 | **Recipe CRUD (manual add)** | «Sessione 2» | ✅ Localhost verified |
-| **Web Scraper (AllRecipes)** | «Sessione 3» + «9» + «11» | ✅ Parser dosi generale (nome + qty + unit + note) |
+| **Web Scraper (AllRecipes)** | «Sessione 3» + «9» + «11» + «12» | ✅ Dosi generali + resa g/ml ≠ porzioni |
 | **Gemini recipe recognition** | «Sessione 3+» | ✅ Cascata in scraper |
 | **FatSecret integration** | — | ❌ Rimosso · DB locale + override utente |
 | **YouTube transcript parser** | «Sessione 5» | ✅ Localhost ready |
-| **Shopping list feature** | «Sessione 3» | ✅ Localhost ready |
-| **Material Design 3 UI** | «Sessione X» | ⏳ Pending |
+| **Shopping list feature** | «Sessione 3» + «12» | ✅ UX mobile checklist |
+| **Material Design 3 UI** | «Sessione X» | ⏳ Pending (mobile HIG/Material touch già applicati) |
 | **Multi-user + RBAC** | «Sessione 7» + «10» | ✅ Ownership per utente + assign staff + reset/recovery |
 | **PWA + offline sync** | «Sessione 6» + «8» | ✅ Build + SW verificati (`dist/sw.js`) |
 | **Foto → Gemini Vision** | «Sessione 8» | ✅ Import da foto |
+| **Foto ricetta (upload)** | «Sessione 12» | ✅ Scatta / carica / URL → Dropbox `/recipes/images` |
 | **Invite link monouso** | «Sessione 8» + «10» | ✅ Copia messaggio (niente email/Resend) |
-| **Deploy prod** | «Sessione 10» | ✅ Cloudflare Worker + Pages online |
+| **Deploy prod** | «Sessione 10» + «12» | ✅ Cloudflare + repo GitHub |
 
 ---
 
@@ -536,7 +537,7 @@ Stima nutrizionale senza API US/UK (FatSecret rimosso).
 | API (Worker) | https://recipe-book-worker.petruzzo-massimiliano-b40.workers.dev |
 
 ### Todo / note
-- [ ] Login GitHub + push repo remoto (opzionale)
+- [x] Login GitHub + push repo remoto → https://github.com/petruzzomassimiliano-maker/recipe-book
 - [ ] In Dropbox App: redirect URI `https://recipe-book-ap1.pages.dev/dropbox-callback`
 - [ ] Owner: impostare **frase di recupero** in Impostazioni e salvarla offline
 - [ ] Material Design 3 UI ancora pending
@@ -568,3 +569,66 @@ Import: dose lasciata nel nome, es. `piselli 300 g freschi o surgelati` → Qty/
 - `Farina Manitoba 200 g`, `zucchero 1 cucchiaio raso`, `farina 00` (qty null) ok
 
 **Deploy:** ✅ Worker Cloudflare aggiornato (reimport per ricette già salvate)
+
+---
+
+## Sessione 12 — 2026-09-16 — Mobile UX, resa vs porzioni, foto ricetta, GitHub
+
+### Segnalazione
+- Ottimizzare UI smartphone (Home, Ricette, Spesa, dettaglio, Impostazioni) con linee guida touch
+- Giallozafferano «Dosi per: 850 grammi» importato come 850 porzioni
+- Aggiungere foto ricetta anche da fotocamera / file, non solo URL
+- README + repo su GitHub
+
+### Soluzione
+
+**Mobile UX (HIG / Material touch targets 44–48px)**
+- Tab bar inferiore (`MobileTabBar`), safe-area, padding pagine
+- Ricette: lista densa mobile + griglia desktop, cerca sticky, chip autori
+- Spesa: riga intera tappabile, add sticky, sezione Presi richiudibile
+- Dettaglio: titolo sotto foto (no overlay), jump Ingredienti/Preparazione, checkbox ingredienti
+- Impostazioni: chip navigazione sezioni, azioni utenti più comode
+
+**Resa ≠ porzioni**
+- `resolveRecipeYield`: se HTML/JSON-LD indica g/ml/kg → `Resa: …` in notes, servings default 4
+- Es. Hummus GZ `recipeYield:850` + «850 grammi» → 4 porzioni + nota resa
+
+**Upload foto ricetta**
+- `POST /api/media` (auth) → Dropbox `/recipes/images/{uuid}.jpg`
+- `GET /api/media/:file` pubblico (UUID) per `<img src>`
+- Form: Scatta / Carica / URL + compressione client-side
+
+**GitHub**
+- Remote: https://github.com/petruzzomassimiliano-maker/recipe-book
+- `README.md` di progetto
+
+### File principali
+| File | Azione |
+|------|--------|
+| `frontend/src/components/common/MobileTabBar.jsx` | **Nuovo** |
+| `frontend/src/pages/ShoppingList.jsx` | **Modificato** — checklist mobile |
+| `frontend/src/pages/RecipeDetail.jsx` | **Modificato** — layout cucina |
+| `frontend/src/pages/Recipes.jsx` / `RecipeList.jsx` | **Modificato** — lista/griglia |
+| `frontend/src/pages/Settings.jsx` | **Modificato** — jump sezioni |
+| `frontend/src/components/recipe/RecipeForm.jsx` | **Modificato** — upload foto |
+| `frontend/src/services/media.js` | **Nuovo** |
+| `worker/src/routes/media.js` | **Nuovo** |
+| `worker/src/lib/dropboxClient.js` | **Modificato** — upload/download binary |
+| `worker/src/lib/scrapers/_base.js` / `jsonld.js` / `geminiExtract.js` | **Modificato** — yield |
+| `README.md` | **Nuovo** |
+| `PROGRESS.md` | **Modificato** — questa sessione |
+
+### URL
+| Servizio | URL |
+|----------|-----|
+| GitHub | https://github.com/petruzzomassimiliano-maker/recipe-book |
+| App | https://recipe-book-ap1.pages.dev |
+| API | https://recipe-book-worker.petruzzo-massimiliano-b40.workers.dev |
+
+### Todo / note
+- [ ] Confermare redirect Dropbox prod se non già fatto
+- [ ] Owner: frase di recupero offline
+- [ ] Material Design 3 formale ancora opzionale
+
+**Deploy:** ✅ Worker + Pages + push GitHub (2026-09-16)
+
