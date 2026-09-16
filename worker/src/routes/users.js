@@ -1,10 +1,11 @@
 import { Hono } from 'hono'
 import { authMiddleware } from '../middleware/auth.js'
-import { generateTempPassword, hashPassword } from '../lib/password.js'
+import { generateTempPassword, hashPassword, verifyPassword } from '../lib/password.js'
 import {
   canDemoteAdmin,
   canManageUsers,
   canPromoteAdmin,
+  canResetUserPassword,
   isOwner
 } from '../lib/rbac.js'
 import {
@@ -80,6 +81,46 @@ users.patch('/me/preferences', async (c) => {
   } catch (err) {
     console.error('[users/me/preferences]', err.message)
     return c.json({ error: err.message || 'Salvataggio fallito' }, 500)
+  }
+})
+
+/**
+ * POST /api/users/me/recovery
+ * Body: { recoveryPhrase, currentPassword? }
+ * Imposta/aggiorna la frase di recupero (min 12 caratteri).
+ */
+users.post('/me/recovery', async (c) => {
+  try {
+    const body = await c.req.json()
+    const phrase = String(body.recoveryPhrase || '').trim()
+    const currentPassword = String(body.currentPassword || '')
+    if (phrase.length < 12) {
+      return c.json({ error: 'Frase di recupero: minimo 12 caratteri' }, 400)
+    }
+
+    const dbx = c.get('dbx')
+    const list = await loadUsers(dbx)
+    const idx = list.findIndex((u) => u.id === c.get('user').userId)
+    if (idx < 0) return c.json({ error: 'Utente non trovato' }, 404)
+
+    const row = list[idx]
+    // Se c’è già una password, chiedi quella attuale (salvo mustChangePassword)
+    if (row.passwordHash && !row.mustChangePassword) {
+      if (!currentPassword) return c.json({ error: 'Password attuale obbligatoria' }, 400)
+      const ok = await verifyPassword(currentPassword, row.passwordHash)
+      if (!ok) return c.json({ error: 'Password attuale non corretta' }, 401)
+    }
+
+    list[idx] = {
+      ...row,
+      recoveryHash: await hashPassword(phrase.toLowerCase()),
+      recoveryUpdatedAt: new Date().toISOString()
+    }
+    await saveUsers(dbx, list)
+    return c.json({ success: true, data: publicUser(list[idx]) })
+  } catch (err) {
+    console.error('[users/me/recovery]', err.message)
+    return c.json({ error: err.message || 'Salvataggio frase fallito' }, 500)
   }
 })
 
@@ -213,6 +254,51 @@ users.patch('/:id', async (c) => {
   } catch (err) {
     console.error('[users/patch]', err.message)
     return c.json({ error: err.message || 'Aggiornamento fallito' }, 500)
+  }
+})
+
+/**
+ * POST /api/users/:id/reset-password — staff genera password temporanea.
+ * Owner/admin → member/admin (non owner, non se stessi).
+ */
+users.post('/:id/reset-password', async (c) => {
+  const denied = requireStaff(c)
+  if (denied) return denied
+
+  try {
+    const actor = c.get('user')
+    const id = c.req.param('id')
+    const dbx = c.get('dbx')
+    const list = await loadUsers(dbx)
+    const idx = list.findIndex((u) => u.id === id)
+    if (idx < 0) return c.json({ error: 'Utente non trovato' }, 404)
+
+    const target = list[idx]
+    if (!canResetUserPassword(actor, target)) {
+      return c.json({ error: 'Non puoi reimpostare la password di questo utente' }, 403)
+    }
+
+    const temporaryPassword = generateTempPassword(12)
+    list[idx] = {
+      ...target,
+      passwordHash: await hashPassword(temporaryPassword),
+      mustChangePassword: true,
+      updatedAt: new Date().toISOString()
+    }
+    await saveUsers(dbx, list)
+
+    return c.json({
+      success: true,
+      data: {
+        user: publicUser(list[idx]),
+        temporaryPassword,
+        message:
+          'Invia la password temporanea all’utente. Al primo accesso dovrà sceglierne una nuova.'
+      }
+    })
+  } catch (err) {
+    console.error('[users/reset-password]', err.message)
+    return c.json({ error: err.message || 'Reset password fallito' }, 500)
   }
 })
 

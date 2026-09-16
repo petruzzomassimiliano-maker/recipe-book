@@ -1,7 +1,16 @@
 import { useAuthStore } from '../store/authStore.js'
 
+const WORKER_URL = (import.meta.env.VITE_WORKER_URL || '').replace(/\/$/, '')
+
+function apiUrl(path) {
+  if (!path.startsWith('/')) return `${WORKER_URL}/${path}`
+  return `${WORKER_URL}${path}`
+}
+
 /**
  * Authenticated fetch — JWT only (Dropbox is server-side).
+ * In local dev VITE_WORKER_URL is empty and Vite proxies /api → worker.
+ * In production it must point at the Worker origin.
  */
 export async function apiFetch(path, options = {}) {
   const { jwt } = useAuthStore.getState()
@@ -11,7 +20,7 @@ export async function apiFetch(path, options = {}) {
     ...options.headers
   }
 
-  const res = await fetch(path, { ...options, headers })
+  const res = await fetch(apiUrl(path), { ...options, headers })
   const data = await res.json().catch(() => ({}))
 
   if (!res.ok) {

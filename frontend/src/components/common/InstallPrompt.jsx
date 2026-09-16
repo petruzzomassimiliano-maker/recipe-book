@@ -37,7 +37,7 @@ export default function InstallPrompt() {
   }
 
   return (
-    <div className="fixed bottom-4 inset-x-4 sm:inset-x-auto sm:right-4 sm:bottom-6 z-40 sm:max-w-sm animate-slide-up">
+    <div className="fixed bottom-[calc(4.25rem+env(safe-area-inset-bottom))] sm:bottom-6 inset-x-4 sm:inset-x-auto sm:right-4 z-40 sm:max-w-sm animate-slide-up">
       <div className="rounded-2xl border border-stone-200 bg-white shadow-lg p-4 flex gap-3 items-start">
         <div className="min-w-0 flex-1">
           <p className="font-semibold text-stone-900 text-sm">Installa Recipe Book</p>

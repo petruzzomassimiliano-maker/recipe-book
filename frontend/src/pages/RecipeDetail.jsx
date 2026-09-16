@@ -36,6 +36,8 @@ export default function RecipeDetail() {
   const [nutritionLoading, setNutritionLoading] = useState(false)
   const [nutritionError, setNutritionError] = useState(null)
   const [removing, setRemoving] = useState(false)
+  const [checkedIng, setCheckedIng] = useState(() => new Set())
+  const [moreOpen, setMoreOpen] = useState(false)
 
   const current = recipe?.id === id ? recipe : null
   const indexEntry = recipes?.find((r) => r.id === id)
@@ -48,6 +50,11 @@ export default function RecipeDetail() {
   useEffect(() => {
     if (current) setServings(baseServings)
   }, [current?.id, baseServings]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    setCheckedIng(new Set())
+    setMoreOpen(false)
+  }, [current?.id])
 
   const scaledIngredients = useMemo(() => {
     if (!current?.ingredients) return []
@@ -62,12 +69,11 @@ export default function RecipeDetail() {
   const handleDelete = async () => {
     if (!current) return
     if (!window.confirm(`Eliminare “${current.title}”?`)) return
-    // Leave immediately; delete is optimistic + Dropbox in background
     navigate('/recipes')
     try {
       await deleteRecipe(id)
     } catch {
-      // Errore già in store; lista ricaricata se il delete Fallisce
+      // Errore già in store
     }
   }
 
@@ -110,6 +116,15 @@ export default function RecipeDetail() {
 
   const bumpServings = (delta) => {
     setServings((prev) => Math.max(1, Math.min(99, (prev ?? baseServings) + delta)))
+  }
+
+  const toggleIngredient = (ingId) => {
+    setCheckedIng((prev) => {
+      const next = new Set(prev)
+      if (next.has(ingId)) next.delete(ingId)
+      else next.add(ingId)
+      return next
+    })
   }
 
   const applyMethodsResult = (res) => {
@@ -286,97 +301,106 @@ export default function RecipeDetail() {
   const totalTime = (Number(meta.prepTime) || 0) + (Number(meta.cookTime) || 0)
   const activeServings = servings ?? baseServings
   const isScaled = activeServings !== baseServings
+  const authorName = current.authorDisplayName || indexEntry?.authorDisplayName
+
+  const metaBits = [
+    meta.prepTime ? `Prep ${meta.prepTime}'` : null,
+    meta.cookTime ? `Cottura ${meta.cookTime}'` : null,
+    totalTime > 0 ? `Tot ${totalTime}'` : null,
+    difficultyLabel[meta.difficulty] || meta.difficulty || null
+  ].filter(Boolean)
 
   return (
-    <main className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-8 animate-fade-in">
-      <Link to="/recipes" className="text-sm text-gray-400 hover:text-gray-700">← Ricette</Link>
+    <main className="max-w-4xl mx-auto px-4 sm:px-6 py-4 sm:py-8 animate-fade-in">
+      <Link
+        to="/recipes"
+        className="inline-flex items-center min-h-[44px] text-sm text-stone-400 active:text-stone-700"
+      >
+        ← Ricette
+      </Link>
 
-      <header className="mt-4">
+      <header className="mt-2">
+        {/* Image plane separate from title — kitchen glance + no overlay cover */}
         {current.imageUrl ? (
-          <div className="relative overflow-hidden rounded-2xl border border-gray-100 bg-gray-100 aspect-[16/10] sm:aspect-[21/9]">
+          <div className="relative overflow-hidden rounded-2xl border border-stone-200/80 bg-stone-100 aspect-[16/10] sm:aspect-[21/9]">
             <img
               src={current.imageUrl}
-              alt={current.title}
+              alt=""
               className="absolute inset-0 h-full w-full object-cover"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
-            <div className="absolute inset-x-0 bottom-0 p-5 sm:p-6">
-              <h1 className="font-display text-2xl sm:text-4xl font-semibold text-white drop-shadow-sm leading-tight">
-                {current.title}
-              </h1>
-              {isStaff && (current.authorDisplayName || indexEntry?.authorDisplayName) && (
-                <p className="mt-1 text-sm text-white/85">
-                  di {current.authorDisplayName || indexEntry.authorDisplayName}
-                </p>
-              )}
-            </div>
           </div>
-        ) : (
-          <>
-            <h1 className="font-display text-3xl sm:text-4xl font-semibold text-stone-900 leading-tight">
-              {current.title}
-            </h1>
-            {isStaff && (current.authorDisplayName || indexEntry?.authorDisplayName) && (
-              <p className="mt-1 text-sm text-stone-500">
-                di {current.authorDisplayName || indexEntry.authorDisplayName}
-              </p>
-            )}
-          </>
-        )}
+        ) : null}
 
-        <div className={`flex flex-wrap items-start justify-between gap-4 ${current.imageUrl ? 'mt-5' : 'mt-3'}`}>
-          <div className="flex flex-wrap gap-2">
-            {!!meta.prepTime && (
-              <span className="inline-flex items-center px-3 py-1.5 rounded-xl bg-white border border-gray-100 text-sm text-gray-700 shadow-sm">
-                Prep {meta.prepTime} min
-              </span>
-            )}
-            {!!meta.cookTime && (
-              <span className="inline-flex items-center px-3 py-1.5 rounded-xl bg-white border border-gray-100 text-sm text-gray-700 shadow-sm">
-                Cottura {meta.cookTime} min
-              </span>
-            )}
-            {totalTime > 0 && (
-              <span className="inline-flex items-center px-3 py-1.5 rounded-xl bg-primary/10 text-primary text-sm font-medium">
-                Totale {totalTime} min
-              </span>
-            )}
-            <span className="inline-flex items-center px-3 py-1.5 rounded-xl bg-white border border-gray-100 text-sm text-gray-700 shadow-sm">
-              {difficultyLabel[meta.difficulty] || meta.difficulty}
-            </span>
-          </div>
+        <div className={current.imageUrl ? 'mt-4' : 'mt-1'}>
+          <h1 className="font-display text-2xl sm:text-4xl font-semibold text-stone-900 leading-tight tracking-tight">
+            {current.title}
+          </h1>
+          {isStaff && authorName && (
+            <p className="mt-1 text-sm text-stone-500">di {authorName}</p>
+          )}
+          {metaBits.length > 0 && (
+            <p className="mt-2 text-sm text-stone-500 flex flex-wrap gap-x-2 gap-y-0.5">
+              {metaBits.map((bit, i) => (
+                <span key={bit} className="inline-flex items-center gap-2">
+                  {i > 0 ? <span className="text-stone-300" aria-hidden>·</span> : null}
+                  {bit}
+                </span>
+              ))}
+            </p>
+          )}
+        </div>
 
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="btn-primary !py-2.5 !px-4 text-sm"
-              onClick={() => setChatOpen(true)}
-            >
-              Chiedi ad IA
-            </button>
-            <button type="button" className="btn-secondary !py-2.5 !px-4 text-sm" onClick={handleAddToList}>
-              + Lista spesa
-            </button>
-            <Link to={`/recipes/${id}/edit`} className="btn-secondary !py-2.5 !px-4 text-sm">
-              Modifica
-            </Link>
+        {/* Primary kitchen actions — full width on phone */}
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+          <button
+            type="button"
+            className="btn-primary !py-2.5 !px-4 text-sm col-span-2 sm:col-span-1 sm:w-auto"
+            onClick={handleAddToList}
+          >
+            + Lista spesa
+          </button>
+          <Link
+            to={`/recipes/${id}/edit`}
+            className="btn-secondary !py-2.5 !px-4 text-sm text-center"
+          >
+            Modifica
+          </Link>
+          <button
+            type="button"
+            className="btn-secondary !py-2.5 !px-4 text-sm"
+            onClick={() => setChatOpen(true)}
+          >
+            Chiedi ad IA
+          </button>
+          <button
+            type="button"
+            className="inline-flex items-center justify-center min-h-[44px] text-sm text-stone-400 active:text-red-600"
+            onClick={() => setMoreOpen((v) => !v)}
+            aria-expanded={moreOpen}
+          >
+            Altro
+          </button>
+        </div>
+
+        {moreOpen && (
+          <div className="mt-2 flex flex-wrap gap-2">
             <button
               type="button"
               id="btn-delete-recipe"
               onClick={handleDelete}
               className="btn-secondary !py-2.5 !px-4 text-sm text-red-600 border-red-200"
             >
-              Elimina
+              Elimina ricetta
             </button>
           </div>
-        </div>
+        )}
 
-        {listMsg && <p className="mt-3 text-sm text-teal-600">{listMsg}</p>}
+        {listMsg && <p className="mt-3 text-sm text-teal-700">{listMsg}</p>}
 
         {!!meta.tags?.length && (
-          <div className="flex flex-wrap gap-1.5 mt-4">
+          <div className="flex flex-wrap gap-1.5 mt-3">
             {meta.tags.map((tag) => (
-              <span key={tag} className="px-2.5 py-0.5 rounded-full bg-gray-100 text-xs text-gray-600">
+              <span key={tag} className="px-2.5 py-0.5 rounded-lg bg-stone-100 text-xs text-stone-600">
                 {tag}
               </span>
             ))}
@@ -384,81 +408,88 @@ export default function RecipeDetail() {
         )}
 
         {current.notes && (
-          <p className="mt-4 text-[15px] leading-relaxed text-gray-600 max-w-3xl">
+          <p className="mt-3 text-[15px] leading-relaxed text-stone-600 max-w-3xl">
             {current.notes}
           </p>
         )}
       </header>
 
-      <CookingMethodsSection
-        recipe={current}
-        methods={current.cookingMethods || []}
-        summary={current.cookingMethodsSummary || ''}
-        loading={methodsLoading}
-        loadingMethod={methodsFocus}
-        error={methodsError}
-        onAnalyze={handleAnalyzeMethods}
-        onSelectAppliance={handleSelectAppliance}
-      />
+      {/* Sticky jump links — recipe UX: get to ingredients/steps fast */}
+      <nav
+        className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-10 -mx-4 px-4 py-2 mt-4 mb-3 bg-surface/95 backdrop-blur-md border-b border-stone-200/60 sm:static sm:mx-0 sm:px-0 sm:bg-transparent sm:backdrop-blur-none sm:border-0 sm:mt-6"
+        aria-label="Sezioni ricetta"
+      >
+        <div className="flex gap-2 overflow-x-auto scrollbar-none">
+          <a
+            href="#ingredienti"
+            className="shrink-0 inline-flex items-center min-h-[40px] px-3.5 rounded-full bg-white border border-stone-200 text-sm font-semibold text-stone-700 active:bg-stone-50"
+          >
+            Ingredienti
+          </a>
+          <a
+            href="#preparazione"
+            className="shrink-0 inline-flex items-center min-h-[40px] px-3.5 rounded-full bg-white border border-stone-200 text-sm font-semibold text-stone-700 active:bg-stone-50"
+          >
+            Preparazione
+          </a>
+          <a
+            href="#extra"
+            className="shrink-0 inline-flex items-center min-h-[40px] px-3.5 rounded-full bg-white border border-stone-200 text-sm font-medium text-stone-500 active:bg-stone-50"
+          >
+            Extra
+          </a>
+        </div>
+      </nav>
 
-      <NutritionPanel
-        nutritionInfo={current.nutritionInfo}
-        loading={nutritionLoading}
-        error={nutritionError}
-        onCalculate={handleCalculateNutrition}
-        onSaveManual={handleSaveManualNutrition}
-        onAddCustomFood={handleAddCustomFood}
-      />
-
-      <div className="mt-4 grid grid-cols-1 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.35fr)] gap-4 lg:gap-5 items-start">
-        <section className="card p-5 sm:p-6 lg:sticky lg:top-20">
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <h2 className="text-lg font-semibold">Ingredienti</h2>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-400 hidden sm:inline">Porzioni</span>
-              <div className="inline-flex items-center rounded-xl border border-gray-200 bg-gray-50 overflow-hidden">
-                <button
-                  type="button"
-                  className="px-3 py-1.5 text-lg leading-none text-gray-600 hover:bg-gray-100 disabled:opacity-40"
-                  onClick={() => bumpServings(-1)}
-                  disabled={activeServings <= 1}
-                  aria-label="Diminuisci porzioni"
-                >
-                  −
-                </button>
-                <input
-                  type="number"
-                  min={1}
-                  max={99}
-                  className="w-12 text-center text-sm font-semibold bg-transparent border-x border-gray-200 py-1.5 focus:outline-none tabular-nums"
-                  value={activeServings}
-                  onChange={(e) => {
-                    const n = Number(e.target.value)
-                    if (!Number.isFinite(n)) return
-                    setServings(Math.max(1, Math.min(99, Math.round(n))))
-                  }}
-                  aria-label="Numero porzioni"
-                />
-                <button
-                  type="button"
-                  className="px-3 py-1.5 text-lg leading-none text-gray-600 hover:bg-gray-100 disabled:opacity-40"
-                  onClick={() => bumpServings(1)}
-                  disabled={activeServings >= 99}
-                  aria-label="Aumenta porzioni"
-                >
-                  +
-                </button>
-              </div>
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.35fr)] gap-4 lg:gap-5 items-start">
+        <section
+          id="ingredienti"
+          className="rounded-2xl border border-stone-200/80 bg-white p-4 sm:p-6 lg:sticky lg:top-24 scroll-mt-28 sm:scroll-mt-24"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <h2 className="text-lg font-semibold text-stone-900">Ingredienti</h2>
+            <div className="inline-flex items-center rounded-xl border border-stone-200 bg-stone-50 overflow-hidden">
+              <button
+                type="button"
+                className="min-h-[44px] min-w-[44px] text-lg leading-none text-stone-600 active:bg-stone-100 disabled:opacity-40"
+                onClick={() => bumpServings(-1)}
+                disabled={activeServings <= 1}
+                aria-label="Diminuisci porzioni"
+              >
+                −
+              </button>
+              <input
+                type="number"
+                min={1}
+                max={99}
+                className="w-11 text-center text-sm font-semibold bg-transparent border-x border-stone-200 py-2 focus:outline-none tabular-nums"
+                value={activeServings}
+                onChange={(e) => {
+                  const n = Number(e.target.value)
+                  if (!Number.isFinite(n)) return
+                  setServings(Math.max(1, Math.min(99, Math.round(n))))
+                }}
+                aria-label="Numero porzioni"
+              />
+              <button
+                type="button"
+                className="min-h-[44px] min-w-[44px] text-lg leading-none text-stone-600 active:bg-stone-100 disabled:opacity-40"
+                onClick={() => bumpServings(1)}
+                disabled={activeServings >= 99}
+                aria-label="Aumenta porzioni"
+              >
+                +
+              </button>
             </div>
           </div>
 
           {isScaled && (
-            <p className="text-xs text-teal-700 mb-3">
-              Dosi ricalcolate da {baseServings} → {activeServings} porzioni
+            <p className="text-xs text-teal-700 mb-2">
+              Dosi da {baseServings} → {activeServings} porzioni
               {' · '}
               <button
                 type="button"
-                className="underline hover:no-underline"
+                className="underline"
                 onClick={() => setServings(baseServings)}
               >
                 ripristina
@@ -467,52 +498,114 @@ export default function RecipeDetail() {
           )}
 
           {scaledIngredients.length ? (
-            <ul className="divide-y divide-gray-100">
+            <ul>
               {scaledIngredients.map((ing) => {
                 const qty = formatScaledQty(ing.quantity, ing.unit)
+                const done = checkedIng.has(ing.id)
                 return (
-                  <li key={ing.id} className="flex items-baseline justify-between gap-4 py-2.5 text-[15px]">
-                    <span className="text-gray-800 leading-snug min-w-0">
-                      {ing.name}
-                      {ing.notes ? (
-                        <span className="block text-xs text-gray-400 mt-0.5 font-normal">{ing.notes}</span>
-                      ) : null}
-                    </span>
-                    <span className="shrink-0 font-semibold text-gray-900 tabular-nums">
-                      {qty || '—'}
-                    </span>
+                  <li key={ing.id} className="border-t border-stone-100 first:border-t-0">
+                    <button
+                      type="button"
+                      className="w-full flex items-center gap-3 min-h-[48px] py-2.5 text-left active:bg-stone-50"
+                      onClick={() => toggleIngredient(ing.id)}
+                      aria-pressed={done}
+                    >
+                      <span
+                        className={`shrink-0 w-6 h-6 rounded-md border-2 flex items-center justify-center ${
+                          done
+                            ? 'bg-teal-600 border-teal-600 text-white'
+                            : 'border-stone-300 bg-white'
+                        }`}
+                        aria-hidden
+                      >
+                        {done ? (
+                          <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+                            <path
+                              fillRule="evenodd"
+                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        ) : null}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span
+                          className={`block text-[15px] leading-snug ${
+                            done ? 'line-through text-stone-400' : 'text-stone-800'
+                          }`}
+                        >
+                          {ing.name}
+                        </span>
+                        {ing.notes ? (
+                          <span className="block text-xs text-stone-400 mt-0.5">{ing.notes}</span>
+                        ) : null}
+                      </span>
+                      <span
+                        className={`shrink-0 text-sm font-semibold tabular-nums ${
+                          done ? 'text-stone-300' : 'text-stone-900'
+                        }`}
+                      >
+                        {qty || '—'}
+                      </span>
+                    </button>
                   </li>
                 )
               })}
             </ul>
           ) : (
-            <p className="text-gray-400 text-sm">Nessun ingrediente</p>
+            <p className="text-stone-400 text-sm">Nessun ingrediente</p>
           )}
         </section>
 
-        <section className="card p-5 sm:p-6">
-          <h2 className="text-lg font-semibold mb-5">Preparazione</h2>
+        <section
+          id="preparazione"
+          className="rounded-2xl border border-stone-200/80 bg-white p-4 sm:p-6 scroll-mt-28 sm:scroll-mt-24"
+        >
+          <h2 className="text-lg font-semibold text-stone-900 mb-4">Preparazione</h2>
           {displaySteps.length ? (
-            <ol className="space-y-6">
+            <ol className="space-y-5">
               {displaySteps.map((step) => (
                 <li key={step.id || step.order} className="flex gap-3.5">
-                  <span className="shrink-0 w-8 h-8 rounded-full bg-primary/10 text-primary text-sm font-semibold flex items-center justify-center">
+                  <span className="shrink-0 w-9 h-9 rounded-full bg-primary/10 text-primary text-sm font-semibold flex items-center justify-center">
                     {step.order}
                   </span>
-                  <div className="pt-0.5 min-w-0 flex-1">
+                  <div className="pt-1 min-w-0 flex-1 text-[16px] sm:text-[15px] leading-relaxed">
                     <StepInstruction text={step.instruction} />
                   </div>
                 </li>
               ))}
             </ol>
           ) : (
-            <p className="text-gray-400 text-sm">Nessun passo</p>
+            <p className="text-stone-400 text-sm">Nessun passo</p>
           )}
         </section>
       </div>
 
+      {/* Secondary: appliances + nutrition below the cook flow */}
+      <div id="extra" className="mt-6 space-y-4 scroll-mt-28 sm:scroll-mt-24">
+        <CookingMethodsSection
+          recipe={current}
+          methods={current.cookingMethods || []}
+          summary={current.cookingMethodsSummary || ''}
+          loading={methodsLoading}
+          loadingMethod={methodsFocus}
+          error={methodsError}
+          onAnalyze={handleAnalyzeMethods}
+          onSelectAppliance={handleSelectAppliance}
+        />
+
+        <NutritionPanel
+          nutritionInfo={current.nutritionInfo}
+          loading={nutritionLoading}
+          error={nutritionError}
+          onCalculate={handleCalculateNutrition}
+          onSaveManual={handleSaveManualNutrition}
+          onAddCustomFood={handleAddCustomFood}
+        />
+      </div>
+
       {current.sourceUrl && (
-        <p className="mt-6 text-xs text-gray-400">
+        <p className="mt-6 text-xs text-stone-400">
           Fonte:{' '}
           <a
             href={current.sourceUrl}

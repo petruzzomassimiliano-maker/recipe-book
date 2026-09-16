@@ -1,5 +1,5 @@
 import { geminiGenerateContent, parseGeminiJson } from '../geminiClient.js'
-import { coerceQuantity, emptyDraft, stripTags } from './_base.js'
+import { emptyDraft, refineIngredientFields, stripTags } from './_base.js'
 import { STEPS_READABILITY_RULES, improveStepsReadability } from './readableSteps.js'
 
 function normalizeAiUnit(unit) {
@@ -13,12 +13,12 @@ function normalizeAiUnit(unit) {
 
 export const RECIPE_JSON_SCHEMA_HINT = `{
   "title": "string",
-  "servings": number,
+  "servings": number (persone/porzioni, NON grammi/ml della resa),
   "prepTime": number (minutes),
   "cookTime": number (minutes),
   "difficulty": "easy"|"medium"|"hard",
   "cuisine": "string",
-  "notes": "string",
+  "notes": "string (se la pagina dice resa in g/ml es. 850 grammi, mettila qui come Resa: 850 g)",
   "ingredients": [{ "name": "string", "quantity": number|string|null, "unit": "string", "notes": "string" }],
   "steps": [{ "instruction": "string" }],
   "imageUrl": "string|null"
@@ -51,7 +51,12 @@ export function extractReadableRecipeText(html, { maxChars = 14000 } = {}) {
 export function normalizeAiDraft(parsed, sourceUrl, sourceProvider = 'gemini') {
   const draft = emptyDraft(sourceUrl, sourceProvider)
   draft.title = String(parsed.title || '').trim()
-  draft.servings = Number(parsed.servings) || 4
+  // Guard: AI sometimes copies yield grams into servings (e.g. 850 g → 850 porzioni)
+  const rawServings = Number(parsed.servings)
+  draft.servings =
+    Number.isFinite(rawServings) && rawServings > 0 && rawServings <= 48
+      ? Math.round(rawServings)
+      : 4
   draft.prepTime = Number(parsed.prepTime) || 0
   draft.cookTime = Number(parsed.cookTime) || 0
   const diff = String(parsed.difficulty || 'easy').toLowerCase()
@@ -63,17 +68,21 @@ export function normalizeAiDraft(parsed, sourceUrl, sourceProvider = 'gemini') {
 
   draft.ingredients = (Array.isArray(parsed.ingredients) ? parsed.ingredients : [])
     .map((ing) => {
-      let name = String(ing?.name || '').trim().replace(/farina['’]0\b/gi, 'farina 00')
-      let quantity = coerceQuantity(ing?.quantity)
-      let unit = normalizeAiUnit(ing?.unit)
-      const notes = String(ing?.notes || '').trim()
+      const refined = refineIngredientFields({
+        name: String(ing?.name || '').trim().replace(/farina['’]0\b/gi, 'farina 00'),
+        quantity: ing?.quantity,
+        unit: normalizeAiUnit(ing?.unit),
+        notes: String(ing?.notes || '').trim()
+      })
+      if (!refined) return null
+      let { name, quantity, unit, notes } = refined
       if (/^q\.?\s*b\.?$/i.test(String(ing?.unit || '')) || quantity === 'q.b.') {
         quantity = 'q.b.'
         unit = ''
       }
       return { name, quantity, unit, notes }
     })
-    .filter((ing) => ing.name)
+    .filter((ing) => ing?.name)
 
   draft.steps = improveStepsReadability(
     (Array.isArray(parsed.steps) ? parsed.steps : [])
@@ -105,6 +114,7 @@ ${RECIPE_JSON_SCHEMA_HINT}
 
 Regole:
 - Lingua: mantieni italiano se la pagina è in italiano
+- servings = numero di PORZIONI/PERSONE (tipicamente 2–12). Se la pagina dice "Dosi per: 850 grammi" o resa in g/ml/kg, NON usare quel numero come servings: metti Resa in notes e stima porzioni ragionevoli (es. 4) oppure 4
 - quantity: numero, frazione decimale, oppure la stringa "q.b." quando è quanto basta; null se sconosciuta
 - unit: g, ml, cucchiaio, cucchiaino, ecc. (vuoto se q.b.)
 - name: solo il nome dell'ingrediente, SENZA dose

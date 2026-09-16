@@ -28,6 +28,19 @@ export function deleteUser(id) {
   })
 }
 
+export function resetUserPassword(id) {
+  return apiFetch(`/api/users/${id}/reset-password`, {
+    method: 'POST'
+  })
+}
+
+export function setMyRecoveryPhrase(payload) {
+  return apiFetch('/api/users/me/recovery', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+}
+
 export function updateMyPreferences(payload) {
   return apiFetch('/api/users/me/preferences', {
     method: 'PATCH',

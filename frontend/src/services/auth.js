@@ -35,6 +35,17 @@ export async function changePassword(currentPassword, newPassword, jwt) {
   return data
 }
 
+export async function recoverPassword({ username, recoveryPhrase, newPassword }) {
+  const res = await fetch(`${WORKER_URL}/api/auth/recover`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, recoveryPhrase, newPassword })
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Recupero fallito')
+  return data
+}
+
 /** Start Dropbox OAuth for family setup / reconnect. */
 export async function initiateFamilyDropboxSetup({ forceReapprove = true } = {}) {
   const { codeVerifier, codeChallenge } = await generatePKCEPair()

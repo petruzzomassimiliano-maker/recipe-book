@@ -67,11 +67,117 @@ export function parseDurationMinutes(value) {
   return Number.isFinite(asNum) ? asNum : 0
 }
 
-export function parseServings(value) {
-  if (value == null) return 4
-  if (typeof value === 'number') return value || 4
-  const m = String(value).match(/(\d+)/)
-  return m ? Number(m[1]) : 4
+/** Mass/volume units — recipeYield is total product, NOT people servings. */
+const YIELD_MASS_VOLUME_RE =
+  /(\d+(?:[.,]\d+)?)\s*(g|gr|grammi?|kg|chilogrammi?|ml|millilitri|cl|dl|l|litri?|oz|lb|lbs|pounds?)\b/i
+
+/** Explicit people / portion wording. */
+const YIELD_PEOPLE_RE =
+  /(\d+)\s*(?:-|–|a|to)?\s*(?:porzioni?|persone|servings?|serves?|pers\.?|pax|people|diners?)\b/i
+
+const DEFAULT_SERVINGS = 4
+/** Bare numbers above this without unit/wording are almost never servings. */
+const MAX_PLAUSIBLE_SERVINGS = 48
+
+/**
+ * Giallozafferano & similar: "Dosi per: 850 grammi" in the page body.
+ */
+export function extractDosiPerFromHtml(html) {
+  const raw = String(html || '')
+  const strong = raw.match(/Dosi\s*per\s*:\s*<strong>\s*([^<]+?)\s*<\/strong>/i)
+  if (strong?.[1]) return strong[1].trim()
+  const plain = raw.match(/Dosi\s*per\s*:\s*([^<\n]{1,60})/i)
+  if (plain?.[1]) return plain[1].replace(/<[^>]+>/g, '').trim()
+  return null
+}
+
+function normalizeYieldUnit(unit) {
+  const u = String(unit || '').toLowerCase().replace(/\.$/, '')
+  if (u === 'gr' || /^gramm/i.test(u)) return 'g'
+  if (/^chilogramm/i.test(u)) return 'kg'
+  if (/^millilit/i.test(u)) return 'ml'
+  if (/^litri?$/i.test(u)) return 'l'
+  if (u === 'lbs' || u === 'pounds' || u === 'pound') return 'lb'
+  return u
+}
+
+function formatYieldLabel(amount, unit) {
+  const n = String(amount).replace(',', '.')
+  return `${n} ${normalizeYieldUnit(unit)}`
+}
+
+/**
+ * Resolve schema.org recipeYield (often a bare number) into servings vs product yield.
+ * Ex: GZ Hummus → recipeYield:850 + "Dosi per: 850 grammi" → servings 4, yield "850 g"
+ */
+export function resolveRecipeYield(value, html = '') {
+  const texts = []
+  const dosiPer = extractDosiPerFromHtml(html)
+  if (dosiPer) texts.push(dosiPer)
+  for (const item of asArray(value)) {
+    if (item == null || item === '') continue
+    texts.push(typeof item === 'number' ? String(item) : String(item).trim())
+  }
+
+  let servings = null
+  let yieldLabel = null
+
+  for (const text of texts) {
+    const people = text.match(YIELD_PEOPLE_RE)
+    if (people && servings == null) {
+      const n = Number(people[1])
+      if (n > 0) servings = n
+    }
+
+    const mass = text.match(YIELD_MASS_VOLUME_RE)
+    if (mass && !yieldLabel) {
+      yieldLabel = formatYieldLabel(mass[1], mass[2])
+    }
+  }
+
+  // Bare numeric recipeYield (common on Giallozafferano)
+  const bare =
+    typeof value === 'number'
+      ? value
+      : /^\d+(?:[.,]\d+)?$/.test(String(value ?? '').trim())
+        ? Number(String(value).replace(',', '.'))
+        : null
+
+  if (bare != null && Number.isFinite(bare) && bare > 0) {
+    if (yieldLabel) {
+      // Number is the mass/volume amount, not portions
+    } else if (bare <= MAX_PLAUSIBLE_SERVINGS) {
+      servings = servings ?? Math.round(bare)
+    } else {
+      // e.g. 850 with no unit in JSON-LD and no HTML context
+      yieldLabel = String(Math.round(bare))
+    }
+  }
+
+  if (servings == null) {
+    for (const text of texts) {
+      if (YIELD_MASS_VOLUME_RE.test(text) || YIELD_PEOPLE_RE.test(text)) continue
+      if (/^\d+$/.test(text)) continue
+      const m = text.match(/(\d+)/)
+      if (m) {
+        const n = Number(m[1])
+        if (n > 0 && n <= MAX_PLAUSIBLE_SERVINGS) {
+          servings = n
+          break
+        }
+      }
+    }
+  }
+
+  return {
+    servings: servings && servings > 0 ? servings : DEFAULT_SERVINGS,
+    yieldLabel
+  }
+}
+
+/** @deprecated Prefer resolveRecipeYield — kept for call sites that only need a number. */
+export function parseServings(value, html = '') {
+  return resolveRecipeYield(value, html).servings
 }
 
 export function coerceQuantity(value) {
@@ -157,11 +263,14 @@ function withOptionalNotes(base) {
 }
 
 /**
- * Parse ingredient lines:
- * - "300 gr di farina 00" (IT common)
- * - "Farina Manitoba 200 g"
- * - "Olio q.b."
- * - "200 g spaghetti"
+ * Parse ingredient lines — regola generale:
+ *
+ * 1) Se la riga INIZIA con quantità[+unità], quella è la dose; il resto è il nome
+ *    ("300 g di piselli freschi", "2 uova").
+ * 2) Altrimenti, se compare quantità+unità DOPO un nome, spezza lì:
+ *    nome | qty | unit | eventuale testo dopo → notes
+ *    ("piselli 300 g freschi o surgelati", "Farina Manitoba 200 g").
+ * 3) Casi speciali: q.b., quantità in lettere, conteggio senza unità in coda.
  */
 export function parseIngredientLine(line) {
   let raw = stripTags(line)
@@ -190,7 +299,7 @@ export function parseIngredientLine(line) {
     return withOptionalNotes({ name: m[1].trim(), quantity: 'q.b.', unit: '', notes: '' })
   }
 
-  // "300 gr di farina" / "1 cucchiaio di olio" / "1/2 cucchiaino di zucchero"
+  // Leading dose: "300 gr di farina" / "1 cucchiaio di olio" / "1/2 cucchiaino di zucchero"
   m = raw.match(new RegExp(`^${qty}\\s*(${unit})\\.?\\s+(?:di\\s+)?(.+)$`, 'iu'))
   if (m) {
     const unitNorm = normalizeUnit(m[2])
@@ -203,26 +312,25 @@ export function parseIngredientLine(line) {
     })
   }
 
-  // "Farina Manitoba 200 g"
-  m = raw.match(new RegExp(`^(.+?)\\s+${qty}\\s*(${unit})\\.?$`, 'iu'))
+  // GENERAL — name + qty + unit + optional trailing descriptors/notes:
+  // "piselli 300 g freschi o surgelati", "Farina Manitoba 200 g", "zucchero 1 cucchiaio raso"
+  m = raw.match(new RegExp(`^(.+?)\\s+${qty}\\s*(${unit})\\.?\\s*(.*)$`, 'iu'))
   if (m) {
-    return withOptionalNotes({
-      name: m[1].trim(),
-      quantity: coerceQuantity(m[2]),
-      unit: normalizeUnit(m[3]),
-      notes: ''
-    })
-  }
-
-  // "Lievito fresco 10 g (oppure 1,5 g di secco)" — keep paren on name if it's a variant
-  m = raw.match(new RegExp(`^(.+?)\\s+${qty}\\s*(${unit})\\.?\\s*(\\([^)]*\\))?$`, 'iu'))
-  if (m) {
-    const note = (m[4] || '').trim()
-    return {
-      name: `${m[1].trim()}${note ? ` ${note}` : ''}`.trim(),
-      quantity: coerceQuantity(m[2]),
-      unit: normalizeUnit(m[3]),
-      notes: ''
+    const namePart = m[1].trim()
+    const restClean = String(m[4] || '')
+      .trim()
+      .replace(/^[–—\-]\s*/, '')
+      .replace(/^\((.*)\)$/, '$1')
+      .trim()
+    if (namePart && !/^\d+[.,]?\d*$/.test(namePart)) {
+      const base = withOptionalNotes({
+        name: namePart,
+        quantity: coerceQuantity(m[2]),
+        unit: normalizeUnit(m[3]),
+        notes: ''
+      })
+      const notes = [base.notes, restClean].filter(Boolean).join(' — ')
+      return { ...base, notes }
     }
   }
 
@@ -310,6 +418,43 @@ export function parseIngredientLine(line) {
   }
 
   return withOptionalNotes({ name: raw, quantity: null, unit: '', notes: '' })
+}
+
+/**
+ * If AI/JSON left dose inside `name`, re-run the general parser.
+ */
+export function refineIngredientFields(ing) {
+  const name = String(ing?.name || '').trim()
+  if (!name) return null
+  let quantity = ing?.quantity
+  let unit = String(ing?.unit || '').trim()
+  let notes = String(ing?.notes || '').trim()
+
+  const qtyEmpty =
+    quantity === '' || quantity == null || (typeof quantity === 'number' && !Number.isFinite(quantity))
+  const looksEmbedded = new RegExp(
+    `\\d(?:[.,]\\d+)?\\s*(?:${UNIT_PATTERN})\\.?\\b`,
+    'i'
+  ).test(name)
+
+  if (looksEmbedded && (qtyEmpty || !unit)) {
+    const parsed = parseIngredientLine(name)
+    if (parsed && (parsed.quantity != null || parsed.unit)) {
+      return {
+        name: parsed.name,
+        quantity: qtyEmpty ? parsed.quantity : coerceQuantity(quantity),
+        unit: unit || parsed.unit || '',
+        notes: notes || parsed.notes || ''
+      }
+    }
+  }
+
+  return {
+    name,
+    quantity: coerceQuantity(quantity),
+    unit: normalizeUnit(unit),
+    notes
+  }
 }
 
 export function asArray(value) {

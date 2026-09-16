@@ -12,17 +12,17 @@
 | **OAuth Dropbox PKCE** | «Sessione init» | ✅ Localhost verified |
 | **Dropbox schema + Zustand** | «Sessione init» | ✅ Localhost verified |
 | **Recipe CRUD (manual add)** | «Sessione 2» | ✅ Localhost verified |
-| **Web Scraper (AllRecipes)** | «Sessione 3» + «9» | ✅ Localhost ready · dose GZ fix |
+| **Web Scraper (AllRecipes)** | «Sessione 3» + «9» + «11» | ✅ Parser dosi generale (nome + qty + unit + note) |
 | **Gemini recipe recognition** | «Sessione 3+» | ✅ Cascata in scraper |
 | **FatSecret integration** | — | ❌ Rimosso · DB locale + override utente |
 | **YouTube transcript parser** | «Sessione 5» | ✅ Localhost ready |
 | **Shopping list feature** | «Sessione 3» | ✅ Localhost ready |
 | **Material Design 3 UI** | «Sessione X» | ⏳ Pending |
-| **Multi-user + RBAC** | «Sessione 7» | ✅ Localhost verified (owner + Dropbox famiglia) |
+| **Multi-user + RBAC** | «Sessione 7» + «10» | ✅ Ownership per utente + assign staff + reset/recovery |
 | **PWA + offline sync** | «Sessione 6» + «8» | ✅ Build + SW verificati (`dist/sw.js`) |
 | **Foto → Gemini Vision** | «Sessione 8» | ✅ Import da foto |
-| **Invite link monouso** | «Sessione 8» | ✅ `/invite/:token` (7 giorni) |
-| **Deploy prod** | «Sessione X» | ⏳ Pending |
+| **Invite link monouso** | «Sessione 8» + «10» | ✅ Copia messaggio (niente email/Resend) |
+| **Deploy prod** | «Sessione 10» | ✅ Cloudflare Worker + Pages online |
 
 ---
 
@@ -176,7 +176,10 @@ Dopo CRUD manuale: import da URL e lista spesa.
 - [x] Calorie: DB locale IT + override utente (per 100 g su Dropbox) + totale manuale — **no FatSecret**
 - [x] YouTube transcript parser (captions + Gemini, fallback trascrizione manuale)
 - [x] PWA offline: service worker, cache ricette/lista, banner offline, install prompt
-- [ ] Deploy prod
+- [x] Deploy Cloudflare Worker + Pages (`recipe-book-ap1.pages.dev`)
+- [ ] Push GitHub (login non completato)
+- [ ] Owner: impostare frase di recupero in Impostazioni
+- [ ] Material Design 3 UI
 
 ---
 
@@ -231,15 +234,15 @@ Stesso Dropbox già usato in sessione init (cartella App → Recipe Book): le ri
 | `worker/src/lib/jwt.js` | **Nuovo** — HS256 JWT app user |
 | `worker/src/lib/users.js` | **Nuovo** — `users.json` + family settings |
 | `worker/src/lib/familyDropbox.js` | **Nuovo** — refresh token famiglia |
-| `worker/src/lib/mail.js` | **Nuovo** — Resend inviti (opzionale) |
-| `worker/src/lib/rbac.js` | **Modificato** — owner/admin/member + `isPrivate` |
+| `worker/src/lib/mail.js` | **Rimosso** (Sessione 10 — niente Resend) |
+| `worker/src/lib/rbac.js` | **Modificato** — owner/admin/member; view = solo proprie / staff tutte |
 | `worker/src/middleware/auth.js` | **Modificato** — JWT + inject Dropbox server |
 | `worker/src/routes/auth.js` | **Riscritto** — login/setup/import-refresh |
 | `worker/src/routes/users.js` | **Nuovo** — invite, roles, preferences |
 | `worker/src/routes/settings.js` | **Nuovo** — `familyAppName` |
-| `worker/src/routes/recipes.js` | **Modificato** — shared default + `isPrivate` in index |
+| `worker/src/routes/recipes.js` | **Modificato** — author + ownership |
 | `worker/src/index.js` | **Modificato** — mount users/settings; CORS senza `X-Dropbox-Token` |
-| `worker/.dev.vars.example` | **Modificato** — `FAMILY_DROPBOX_*`, Resend |
+| `worker/.dev.vars.example` | **Modificato** — `FAMILY_DROPBOX_*` (no Resend) |
 | `scripts/set-family-dropbox-token.mjs` | **Nuovo** — scrive token in `.dev.vars` |
 | `frontend/src/store/authStore.js` | **Modificato** — solo JWT/user (no Dropbox client) |
 | `frontend/src/services/auth.js` | **Modificato** — login/setup/import |
@@ -277,17 +280,15 @@ export function getConfiguredFamilyRefreshToken(env) {
 
 ```js
 export function canViewRecipe(user, recipe) {
+  if (!recipe) return false
   if (isStaff(user)) return true
-  const mine = recipe.author === authorKey(user) || recipe.author === user.userId
-  if (mine) return true
-  if (recipe.metadata?.isPrivate === true || recipe.isPrivate === true) return false
-  if (recipe.metadata?.isShared === false || recipe.isShared === false) return false
-  return true // default: condivisa in famiglia
+  return isRecipeAuthor(user, recipe) // member: solo le proprie
 }
 
 export function canEditRecipe(user, recipe) {
+  if (!recipe) return false
   if (isStaff(user)) return true
-  return recipe.author === authorKey(user) || recipe.author === user.userId
+  return isRecipeAuthor(user, recipe)
 }
 ```
 
@@ -296,10 +297,9 @@ export function canEditRecipe(user, recipe) {
 ```bash
 # ... DROPBOX_APP_KEY / SECRET / JWT_SECRET ...
 FAMILY_DROPBOX_REFRESH_TOKEN=sl.B.......   # obbligatorio dopo setup
-# RESEND_API_KEY=                          # opzionale inviti email
+# GEMINI_API_KEY=… / GEMINI_API_KEY_2=… (opzionale)
 # APP_BASE_URL=http://localhost:5173
 ```
-
 **API auth rilevanti**
 
 | Method | Path | Note |
@@ -359,7 +359,7 @@ Chiudere i pezzi “quasi fatti”: PWA build/SW, upload foto → Gemini, invite
 - `inviteToken` + `inviteExpiresAt` (7g) su `users.json`
 - `GET /api/auth/invite/:token`, `POST /api/auth/accept-invite`
 - Frontend `/invite/:token` + copia link in Impostazioni
-- Email (Resend) include link; resta anche password temp come fallback
+- Niente email automatica (Resend rimosso in Sessione 10)
 
 ### File principali
 | File | Azione |
@@ -371,7 +371,6 @@ Chiudere i pezzi “quasi fatti”: PWA build/SW, upload foto → Gemini, invite
 | `worker/src/lib/scrapers/geminiExtract.js` | **Modificato** (`parseRecipePhotoWithGemini`) |
 | `worker/src/routes/auth.js` | **Modificato** (invite preview + accept) |
 | `worker/src/routes/users.js` | **Modificato** (token 7g) |
-| `worker/src/lib/mail.js` | **Modificato** |
 | `frontend/src/pages/ImportRecipe.jsx` | **Modificato** (foto) |
 | `frontend/src/pages/InviteAccept.jsx` | **Nuovo** |
 | `frontend/src/pages/Settings.jsx` | **Modificato** (copia link) |
@@ -468,3 +467,104 @@ Stima nutrizionale senza API US/UK (FatSecret rimosso).
 - Cottura: solo metodi comuni (aria, forno, padella, bollire); pannello espandi/chiudi al tap sull’icona
 
 **Deploy:** ⏳ Localhost ready
+
+---
+
+## Sessione 10 — 2026-09-15 — Ownership, deploy Cloudflare, password recovery
+
+### Segnalazione
+- Togliere inviti email/Resend; solo condivisione manuale del link
+- Ogni utente vede solo le sue ricette; owner/admin vedono tutte
+- Staff: assegnare ricetta a un utente in creazione/import/modifica
+- Lista ricette staff: tab affiancate «Ricette di {nome}»
+- Deploy su Cloudflare (Pages + Worker)
+- Ricette locali non visibili in prod (bug URL API)
+- Reset password utenti da staff + recupero password (anche owner) senza email
+
+### Soluzione
+
+**Inviti senza email**
+- Eliminato `mail.js` / Resend; Settings mostra solo testo da copiare (WhatsApp/SMS)
+- Puliti `.dev.vars` / example da chiavi Resend
+
+**Ownership ricette**
+- `canViewRecipe`: member solo proprie; staff tutte
+- Migrazione orfane → owner al list/get
+- Staff: campo **Assegna a** in `RecipeForm` (`assignToUserId`)
+- UI Ricette: tab per autore (click → elenco)
+
+**Deploy Cloudflare**
+- Worker: `https://recipe-book-worker.petruzzo-massimiliano-b40.workers.dev`
+- Pages: `https://recipe-book-ap1.pages.dev`
+- Secret Worker da `.dev.vars` + `APP_BASE_URL` / `DROPBOX_REDIRECT_URI` prod
+- CORS aggiornato per `recipe-book-ap1.pages.dev` (+ preview)
+- GitHub: login non completato (repo non ancora su remote)
+
+**Fix prod API**
+- `apiFetch` ora prefissa `VITE_WORKER_URL` (login già lo faceva; recipes/shopping no → 404 Pages)
+
+**Password**
+- Staff: `POST /api/users/:id/reset-password` → password temp + `mustChangePassword`
+- Utente: frase di recupero in Impostazioni (`POST /api/users/me/recovery`)
+- Login: «Password dimenticata?» → `POST /api/auth/recover` (username + frase + nuova pw)
+- Settings: Cambia password + Frase di recupero + Reimposta password utenti
+- Script: `scripts/reset-owner-password.mjs` (`--list`, `--password`, `--delete-username`)
+
+### File principali
+| File | Azione |
+|------|--------|
+| `worker/src/lib/mail.js` | **Rimosso** |
+| `worker/src/lib/rbac.js` | **Modificato** — ownership + `canResetUserPassword` |
+| `worker/src/routes/recipes.js` | **Modificato** — migrate author, assignToUserId |
+| `worker/src/routes/users.js` | **Modificato** — reset-password, me/recovery |
+| `worker/src/routes/auth.js` | **Modificato** — `/recover` |
+| `worker/src/index.js` | **Modificato** — CORS Pages |
+| `worker/.dev.vars.example` | **Modificato** — no Resend |
+| `frontend/src/services/api.js` | **Modificato** — `VITE_WORKER_URL` |
+| `frontend/src/services/auth.js` | **Modificato** — `recoverPassword` |
+| `frontend/src/services/users.js` | **Modificato** — reset + recovery |
+| `frontend/src/pages/Login.jsx` | **Modificato** — recupero password |
+| `frontend/src/pages/Settings.jsx` | **Modificato** — pw, recovery, reset utenti, invito copia |
+| `frontend/src/pages/Recipes.jsx` | **Modificato** — tab per autore |
+| `frontend/src/components/recipe/RecipeForm.jsx` | **Modificato** — Assegna a |
+| `scripts/reset-owner-password.mjs` | **Nuovo** |
+
+### URL produzione
+| Servizio | URL |
+|----------|-----|
+| App (Pages) | https://recipe-book-ap1.pages.dev |
+| API (Worker) | https://recipe-book-worker.petruzzo-massimiliano-b40.workers.dev |
+
+### Todo / note
+- [ ] Login GitHub + push repo remoto (opzionale)
+- [ ] In Dropbox App: redirect URI `https://recipe-book-ap1.pages.dev/dropbox-callback`
+- [ ] Owner: impostare **frase di recupero** in Impostazioni e salvarla offline
+- [ ] Material Design 3 UI ancora pending
+
+**Deploy:** ✅ Cloudflare Worker + Pages (2026-09-15)
+
+---
+
+## Sessione 11 — 2026-09-15 — Parser ingredienti (regola generale)
+
+### Segnalazione
+Import: dose lasciata nel nome, es. `piselli 300 g freschi o surgelati` → Qty/Unità vuoti.
+
+### Soluzione — regola generale (`parseIngredientLine`)
+1. Se la riga **inizia** con quantità[+unità] → quella è la dose; resto = nome (`300 g di farina`).
+2. Altrimenti, se compare **nome + qty + unità** → spezza lì; testo dopo l’unità → **notes** (`piselli 300 g freschi o surgelati`).
+3. Casi speciali invariati: `q.b.`, quantità in lettere, conteggio senza unità in coda (`Uova 4`), evita falso positivo `farina 00`.
+
+**Rescue AI:** `refineIngredientFields` ri-applica il parser se Gemini lascia la dose dentro `name`.
+
+### File
+| File | Azione |
+|------|--------|
+| `worker/src/lib/scrapers/_base.js` | **Modificato** — pattern generale + `refineIngredientFields` |
+| `worker/src/lib/scrapers/geminiExtract.js` | **Modificato** — refine post-AI |
+
+### Test rapidi
+- `piselli 300 g freschi o surgelati` → name `piselli`, qty `300`, unit `g`, notes `freschi o surgelati`
+- `Farina Manitoba 200 g`, `zucchero 1 cucchiaio raso`, `farina 00` (qty null) ok
+
+**Deploy:** ✅ Worker Cloudflare aggiornato (reimport per ricette già salvate)

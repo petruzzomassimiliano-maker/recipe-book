@@ -422,6 +422,70 @@ auth.post('/change-password', authMiddleware, async (c) => {
   }
 })
 
+/**
+ * POST /api/auth/recover
+ * Body: { username, recoveryPhrase, newPassword }
+ * Recupero senza email (frase di recupero impostata in Impostazioni).
+ */
+auth.post('/recover', async (c) => {
+  try {
+    const body = await c.req.json()
+    const username = normalizeUsername(body.username)
+    const phrase = String(body.recoveryPhrase || '').trim()
+    const newPassword = String(body.newPassword || '')
+    if (!username || !phrase) {
+      return c.json({ error: 'Username e frase di recupero obbligatori' }, 400)
+    }
+    if (newPassword.length < 8) {
+      return c.json({ error: 'Nuova password minimo 8 caratteri' }, 400)
+    }
+
+    const dbx = await getFamilyDropboxClient(c.env)
+    const users = await loadUsers(dbx)
+    const idx = users.findIndex(
+      (u) => String(u.username || '').toLowerCase() === username
+    )
+    if (idx < 0 || users[idx].active === false) {
+      return c.json({ error: 'Credenziali di recupero non valide' }, 401)
+    }
+    const row = users[idx]
+    if (!row.recoveryHash) {
+      return c.json(
+        {
+          error:
+            'Nessuna frase di recupero impostata per questo account. Chiedi a un admin di reimpostare la password, oppure impostala in Impostazioni dopo il login.'
+        },
+        400
+      )
+    }
+
+    const ok = await verifyPassword(phrase.toLowerCase(), row.recoveryHash)
+    if (!ok) return c.json({ error: 'Credenziali di recupero non valide' }, 401)
+
+    users[idx] = {
+      ...row,
+      passwordHash: await hashPassword(newPassword),
+      mustChangePassword: false,
+      updatedAt: new Date().toISOString()
+    }
+    await saveUsers(dbx, users)
+
+    const jwt = await issueUserJwt(users[idx], c.env)
+    const settings = await loadFamilySettings(dbx)
+    return c.json({
+      success: true,
+      jwt,
+      user: publicUser(users[idx]),
+      familyAppName: settings.familyAppName,
+      mustChangePassword: false
+    })
+  } catch (err) {
+    console.error('[auth/recover]', err.message)
+    const status = err.status || 500
+    return c.json({ error: err.message || 'Recupero fallito', code: err.code }, status)
+  }
+})
+
 // ── POST /api/auth/logout ────────────────────────────────────────────────────
 auth.post('/logout', (c) => c.json({ success: true, message: 'Logged out' }))
 

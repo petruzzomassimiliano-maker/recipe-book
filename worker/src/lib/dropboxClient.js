@@ -71,6 +71,53 @@ export class DropboxClient {
     return data
   }
 
+  /**
+   * Upload raw bytes (images). `body` must be ArrayBuffer, Uint8Array, or Blob.
+   */
+  async uploadBinary(path, body, mode = 'overwrite') {
+    const res = await fetch(`${this.contentBase}/files/upload`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        'Content-Type': 'application/octet-stream',
+        'Dropbox-API-Arg': JSON.stringify({
+          path,
+          mode: typeof mode === 'string' ? { '.tag': mode } : mode,
+          autorename: false,
+          mute: true
+        })
+      },
+      body
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throwDropboxError(data, `Dropbox binary upload error [${path}]`, res.status)
+    return data
+  }
+
+  async downloadBinary(path) {
+    const res = await fetch(`${this.contentBase}/files/download`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        'Dropbox-API-Arg': JSON.stringify({ path })
+      }
+    })
+    if (res.status === 409) return null
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}))
+      throwDropboxError(errData, `Dropbox binary download error [${path}]`, res.status)
+    }
+    const buf = await res.arrayBuffer()
+    let apiResult = {}
+    try {
+      const raw = res.headers.get('Dropbox-API-Result')
+      if (raw) apiResult = JSON.parse(raw)
+    } catch {
+      // ignore
+    }
+    return { buffer: buf, meta: apiResult }
+  }
+
   async downloadFile(path) {
     const res = await fetch(`${this.contentBase}/files/download`, {
       method: 'POST',
@@ -152,6 +199,7 @@ export class DropboxClient {
       '/users',
       `/users/user-${userId}`,
       '/recipes',
+      '/recipes/images',
       '/shopping-lists',
       '/nutrition-cache'
     ]

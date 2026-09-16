@@ -36,6 +36,19 @@ export function canEditFamilySettings(user) {
   return isStaff(user)
 }
 
+/**
+ * Owner: reset admin + member (not self).
+ * Admin: reset admin + member (not owner, not self).
+ */
+export function canResetUserPassword(actor, target) {
+  if (!actor || !target) return false
+  if (actor.userId === target.id) return false
+  if (target.role === ROLES.OWNER) return false
+  if (!isStaff(actor)) return false
+  if (target.role === ROLES.ADMIN || target.role === ROLES.MEMBER) return true
+  return false
+}
+
 export function isRecipeAuthor(user, recipe) {
   if (!user || !recipe) return false
   const author = recipe.author

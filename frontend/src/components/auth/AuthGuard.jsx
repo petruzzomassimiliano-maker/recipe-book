@@ -1,6 +1,7 @@
 import { Navigate, Outlet } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore.js'
 import Navbar from '../common/Navbar.jsx'
+import MobileTabBar from '../common/MobileTabBar.jsx'
 import OfflineBanner from '../common/OfflineBanner.jsx'
 import InstallPrompt from '../common/InstallPrompt.jsx'
 import { useRecipeStore } from '../../store/recipeStore.js'
@@ -14,10 +15,13 @@ export default function AuthGuard() {
   if (mustChangePassword) return <Navigate to="/change-password" replace />
 
   return (
-    <div className="min-h-dvh bg-surface">
+    <div className="min-h-dvh bg-surface flex flex-col">
       <Navbar />
       <OfflineBanner usingCache={offlineFallback} />
-      <Outlet />
+      <div className="flex-1 pb-[calc(3.75rem+env(safe-area-inset-bottom))] sm:pb-0">
+        <Outlet />
+      </div>
+      <MobileTabBar />
       <InstallPrompt />
     </div>
   )

@@ -41,7 +41,8 @@ export function publicUser(user) {
     createdAt: user.createdAt,
     roleChangedAt: user.roleChangedAt || null,
     invitePending: Boolean(user.inviteToken && !user.inviteUsedAt),
-    inviteExpiresAt: user.inviteExpiresAt || null
+    inviteExpiresAt: user.inviteExpiresAt || null,
+    hasRecovery: Boolean(user.recoveryHash)
   }
 }
 

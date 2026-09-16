@@ -49,8 +49,8 @@ export default function AddRecipe() {
   }
 
   return (
-    <main className="max-w-3xl mx-auto px-4 sm:px-6 py-8 animate-fade-in">
-      <h1 className="page-title mb-6">
+    <main className="max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-8 animate-fade-in">
+      <h1 className="page-title mb-5 sm:mb-6">
         {id ? 'Modifica ricetta' : 'Nuova ricetta'}
       </h1>
       <RecipeForm

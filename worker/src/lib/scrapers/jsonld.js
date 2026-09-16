@@ -4,7 +4,7 @@ import {
   firstImage,
   parseDurationMinutes,
   parseIngredientLine,
-  parseServings,
+  resolveRecipeYield,
   cleanInstructionText,
   stripTags
 } from './_base.js'
@@ -77,13 +77,24 @@ export function parseJsonLdRecipe(html, sourceUrl) {
   const recipe = recipes[0]
   const draft = emptyDraft(sourceUrl, 'website')
   draft.title = stripTags(recipe.name || '')
-  draft.servings = parseServings(recipe.recipeYield || recipe.yield)
+
+  const { servings, yieldLabel } = resolveRecipeYield(
+    recipe.recipeYield || recipe.yield,
+    html
+  )
+  draft.servings = servings
   draft.prepTime = parseDurationMinutes(recipe.prepTime)
   draft.cookTime = parseDurationMinutes(recipe.cookTime || recipe.totalTime)
   draft.cuisine = stripTags(asArray(recipe.recipeCuisine)[0] || '')
   draft.tags = [] // user sets tags manually in the form
   draft.imageUrl = firstImage(recipe.image)
   draft.notes = stripTags(recipe.description || '')
+  if (yieldLabel) {
+    const resa = `Resa: ${yieldLabel}`
+    if (!/resa\s*:/i.test(draft.notes) && !draft.notes.includes(yieldLabel)) {
+      draft.notes = draft.notes ? `${draft.notes}\n\n${resa}` : resa
+    }
+  }
   draft.ingredients = asArray(recipe.recipeIngredient)
     .map(parseIngredientLine)
     .filter(Boolean)

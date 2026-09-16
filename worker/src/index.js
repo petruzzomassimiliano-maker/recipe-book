@@ -11,6 +11,7 @@ import nutritionRoutes from './routes/nutrition.js'
 import youtubeRoutes from './routes/youtube.js'
 import usersRoutes from './routes/users.js'
 import settingsRoutes from './routes/settings.js'
+import mediaRoutes from './routes/media.js'
 import { errorHandler } from './middleware/errorHandler.js'
 
 const app = new Hono()
@@ -52,6 +53,7 @@ app.route('/api/nutrition', nutritionRoutes)
 app.route('/api/youtube', youtubeRoutes)
 app.route('/api/users', usersRoutes)
 app.route('/api/settings', settingsRoutes)
+app.route('/api/media', mediaRoutes)
 
 // ── 404 fallback ────────────────────────────────────────────────────────────
 app.notFound((c) => {
