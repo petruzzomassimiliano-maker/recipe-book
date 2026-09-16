@@ -273,7 +273,7 @@ export default function RecipeForm({
       <section className={sectionClass}>
         <h2 className={sectionTitleClass}>Dettagli</h2>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.35fr)_minmax(16rem,0.85fr)] gap-5 lg:gap-8 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px] gap-5 lg:gap-8 items-start">
           <div className="space-y-4 lg:space-y-5 min-w-0">
             <label className="block">
               <span className={fieldLabelClass}>Titolo *</span>
@@ -322,9 +322,9 @@ export default function RecipeForm({
               </label>
             )}
 
-            {/* Related meta — one row on desktop (Carbon: group related fields) */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 lg:gap-4">
-              <label className="block">
+            {/* Related meta — 2×2 until xl so labels/values don’t crush */}
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 lg:gap-4">
+              <label className="block min-w-0">
                 <span className={fieldLabelClass}>Porzioni</span>
                 <input
                   type="number"
@@ -334,7 +334,7 @@ export default function RecipeForm({
                   onChange={(e) => update({ servings: e.target.value })}
                 />
               </label>
-              <label className="block">
+              <label className="block min-w-0">
                 <span className={fieldLabelClass}>Prep (min)</span>
                 <input
                   type="number"
@@ -344,8 +344,8 @@ export default function RecipeForm({
                   onChange={(e) => update({ prepTime: e.target.value })}
                 />
               </label>
-              <label className="block">
-                <span className={fieldLabelClass}>Cottura (min)</span>
+              <label className="block min-w-0">
+                <span className={`${fieldLabelClass} whitespace-nowrap`}>Cottura (min)</span>
                 <input
                   type="number"
                   min="0"
@@ -354,7 +354,7 @@ export default function RecipeForm({
                   onChange={(e) => update({ cookTime: e.target.value })}
                 />
               </label>
-              <label className="block">
+              <label className="block min-w-0">
                 <span className={fieldLabelClass}>Difficoltà</span>
                 <select
                   className="input-field mt-1.5"
@@ -484,42 +484,37 @@ export default function RecipeForm({
         </div>
       </section>
 
-      {/* —— Ingredienti + Passi: two columns on large desktop —— */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 lg:gap-8 items-start">
-        <section className={sectionClass}>
-          <div className="flex items-center justify-between gap-2">
-            <h2 className={sectionTitleClass}>Ingredienti</h2>
-            <button
-              type="button"
-              className="inline-flex items-center min-h-[40px] px-2 text-sm text-primary font-semibold"
-              onClick={() => update({ ingredients: [...form.ingredients, emptyIngredient()] })}
-            >
-              + Aggiungi
-            </button>
-          </div>
-
-          {/* Desktop column headers — denser data entry */}
-          <div
-            className="hidden md:grid grid-cols-[minmax(0,1fr)_5.5rem_6.5rem_2.75rem] gap-2.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-stone-400"
-            aria-hidden
+      {/* Ingredienti then Passi — full width (avoids crushing name column) */}
+      <section className={sectionClass}>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className={sectionTitleClass}>Ingredienti</h2>
+          <button
+            type="button"
+            className="inline-flex items-center min-h-[40px] px-2 text-sm text-primary font-semibold"
+            onClick={() => update({ ingredients: [...form.ingredients, emptyIngredient()] })}
           >
-            <span>Nome</span>
-            <span>Qty</span>
-            <span>Unità</span>
-            <span />
-          </div>
+            + Aggiungi
+          </button>
+        </div>
 
-          <div className="space-y-2">
-            {form.ingredients.map((row, idx) => (
-              <div
-                key={idx}
-                className="rounded-xl border border-stone-100 bg-stone-50/50 p-2.5
-                           flex flex-col gap-2
-                           md:flex-row md:items-center md:gap-2.5 md:p-2 md:bg-transparent md:border-0 md:border-b md:border-stone-100 md:rounded-none md:px-0"
-              >
-                <div className="flex items-start gap-2 min-w-0 flex-1">
-                  <AutoGrowTextarea
-                    className="flex-1 min-w-0 md:!min-h-[44px] md:!py-2"
+        <div
+          className="hidden md:grid grid-cols-[minmax(0,1fr)_6rem_7rem_2.75rem] gap-3 px-1 text-[11px] font-semibold uppercase tracking-wide text-stone-400"
+          aria-hidden
+        >
+          <span>Nome</span>
+          <span>Qty</span>
+          <span>Unità</span>
+          <span className="sr-only">Rimuovi</span>
+        </div>
+
+        <div className="space-y-2">
+          {form.ingredients.map((row, idx) => (
+            <div key={idx}>
+              {/* Mobile stacked */}
+              <div className="md:hidden rounded-xl border border-stone-100 bg-stone-50/50 p-2.5 space-y-2">
+                <div className="flex items-start gap-2">
+                  <input
+                    className="input-field flex-1 min-w-0"
                     placeholder="Nome ingrediente"
                     value={row.name}
                     onChange={(e) => setIngredient(idx, { name: e.target.value })}
@@ -527,7 +522,7 @@ export default function RecipeForm({
                   />
                   <button
                     type="button"
-                    className="shrink-0 inline-flex items-center justify-center min-h-[44px] min-w-[44px] rounded-lg text-stone-400 active:text-red-600 active:bg-red-50 md:hidden"
+                    className="shrink-0 inline-flex items-center justify-center min-h-[44px] min-w-[44px] rounded-lg text-stone-400 active:text-red-600 active:bg-red-50"
                     onClick={() =>
                       update({ ingredients: form.ingredients.filter((_, i) => i !== idx) })
                     }
@@ -539,10 +534,9 @@ export default function RecipeForm({
                     </svg>
                   </button>
                 </div>
-
-                <div className="grid grid-cols-2 gap-2 md:contents">
+                <div className="grid grid-cols-2 gap-2">
                   <input
-                    className="input-field md:!min-h-[44px] md:!py-2 md:w-[5.5rem] md:shrink-0"
+                    className="input-field"
                     inputMode="decimal"
                     placeholder="Qty"
                     value={row.quantity}
@@ -550,7 +544,7 @@ export default function RecipeForm({
                     aria-label={`Ingrediente ${idx + 1} quantità`}
                   />
                   <input
-                    className="input-field md:!min-h-[44px] md:!py-2 md:w-[6.5rem] md:shrink-0"
+                    className="input-field"
                     placeholder="Unità"
                     value={row.unit}
                     onChange={(e) => setIngredient(idx, { unit: e.target.value })}
@@ -558,19 +552,36 @@ export default function RecipeForm({
                     list={`unit-suggestions-${idx}`}
                   />
                 </div>
-                <datalist id={`unit-suggestions-${idx}`}>
-                  <option value="g" />
-                  <option value="kg" />
-                  <option value="ml" />
-                  <option value="l" />
-                  <option value="cucchiaio" />
-                  <option value="cucchiaino" />
-                  <option value="pz" />
-                </datalist>
+              </div>
 
+              {/* Desktop: explicit 4-column grid (no display:contents) */}
+              <div className="hidden md:grid grid-cols-[minmax(0,1fr)_6rem_7rem_2.75rem] gap-3 items-center py-2 border-b border-stone-100">
+                <input
+                  className="input-field !min-h-[44px] !py-2 min-w-0 !w-full"
+                  placeholder="Nome ingrediente"
+                  value={row.name}
+                  onChange={(e) => setIngredient(idx, { name: e.target.value })}
+                  aria-label={`Ingrediente ${idx + 1} nome`}
+                />
+                <input
+                  className="input-field !min-h-[44px] !py-2 !w-full"
+                  inputMode="decimal"
+                  placeholder="Qty"
+                  value={row.quantity}
+                  onChange={(e) => setIngredient(idx, { quantity: e.target.value })}
+                  aria-label={`Ingrediente ${idx + 1} quantità`}
+                />
+                <input
+                  className="input-field !min-h-[44px] !py-2 !w-full"
+                  placeholder="Unità"
+                  value={row.unit}
+                  onChange={(e) => setIngredient(idx, { unit: e.target.value })}
+                  aria-label={`Ingrediente ${idx + 1} unità`}
+                  list={`unit-suggestions-${idx}`}
+                />
                 <button
                   type="button"
-                  className="hidden md:inline-flex shrink-0 items-center justify-center min-h-[44px] min-w-[44px] rounded-lg text-stone-400 hover:text-red-600 hover:bg-red-50"
+                  className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] justify-self-center rounded-lg text-stone-400 hover:text-red-600 hover:bg-red-50"
                   onClick={() =>
                     update({ ingredients: form.ingredients.filter((_, i) => i !== idx) })
                   }
@@ -582,57 +593,65 @@ export default function RecipeForm({
                   </svg>
                 </button>
               </div>
-            ))}
-          </div>
-        </section>
 
-        <section className={sectionClass}>
-          <div className="flex items-center justify-between gap-2">
-            <h2 className={sectionTitleClass}>Passi</h2>
-            <button
-              type="button"
-              className="inline-flex items-center min-h-[40px] px-2 text-sm text-primary font-semibold"
-              onClick={() => update({ steps: [...form.steps, emptyStep()] })}
+              <datalist id={`unit-suggestions-${idx}`}>
+                <option value="g" />
+                <option value="kg" />
+                <option value="ml" />
+                <option value="l" />
+                <option value="cucchiaio" />
+                <option value="cucchiaino" />
+                <option value="pz" />
+              </datalist>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className={sectionClass}>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className={sectionTitleClass}>Passi</h2>
+          <button
+            type="button"
+            className="inline-flex items-center min-h-[40px] px-2 text-sm text-primary font-semibold"
+            onClick={() => update({ steps: [...form.steps, emptyStep()] })}
+          >
+            + Aggiungi
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          {form.steps.map((row, idx) => (
+            <div
+              key={idx}
+              className="flex gap-3 items-start rounded-xl border border-stone-100 bg-stone-50/40 p-3"
             >
-              + Aggiungi
-            </button>
-          </div>
-
-          <div className="space-y-3 lg:space-y-4">
-            {form.steps.map((row, idx) => (
-              <div
-                key={idx}
-                className="rounded-xl border border-stone-100 bg-stone-50/40 p-3 lg:p-4 space-y-2"
+              <span className="shrink-0 inline-flex items-center justify-center w-8 h-8 mt-1 rounded-full bg-primary/10 text-primary text-sm font-semibold">
+                {idx + 1}
+              </span>
+              <AutoGrowTextarea
+                className="flex-1 min-w-0 min-h-[72px] leading-[1.65] text-base"
+                minPx={72}
+                placeholder="Cosa fare in questo passo…"
+                value={row.instruction}
+                onChange={(e) => setStep(idx, e.target.value)}
+                aria-label={`Passo ${idx + 1}`}
+              />
+              <button
+                type="button"
+                className="shrink-0 inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded-lg text-stone-400 hover:text-red-600 hover:bg-red-50"
+                onClick={() => update({ steps: form.steps.filter((_, i) => i !== idx) })}
+                disabled={form.steps.length === 1}
+                aria-label={`Rimuovi passo ${idx + 1}`}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-primary/10 text-primary text-xs font-semibold">
-                    {idx + 1}
-                  </span>
-                  <button
-                    type="button"
-                    className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded-lg text-stone-400 hover:text-red-600 hover:bg-red-50"
-                    onClick={() => update({ steps: form.steps.filter((_, i) => i !== idx) })}
-                    disabled={form.steps.length === 1}
-                    aria-label={`Rimuovi passo ${idx + 1}`}
-                  >
-                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
-                      <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
-                    </svg>
-                  </button>
-                </div>
-                <AutoGrowTextarea
-                  className="w-full min-h-[72px] lg:min-h-[88px] leading-[1.65] text-base"
-                  minPx={72}
-                  placeholder="Cosa fare in questo passo…"
-                  value={row.instruction}
-                  onChange={(e) => setStep(idx, e.target.value)}
-                  aria-label={`Passo ${idx + 1}`}
-                />
-              </div>
-            ))}
-          </div>
-        </section>
-      </div>
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+                  <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      </section>
 
       {/* —— Note —— */}
       <section className={sectionClass}>

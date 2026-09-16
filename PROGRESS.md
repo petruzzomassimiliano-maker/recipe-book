@@ -22,8 +22,10 @@
 | **PWA + offline sync** | «Sessione 6» + «8» | ✅ Build + SW verificati (`dist/sw.js`) |
 | **Foto → Gemini Vision** | «Sessione 8» | ✅ Import da foto |
 | **Foto ricetta (upload)** | «Sessione 12» | ✅ Scatta / carica / URL → Dropbox `/recipes/images` |
+| **Split view desktop** | «Sessione 13» | ✅ Due ricette affiancate (`?split=`) ≥1024px |
+| **Form ricetta desktop** | «Sessione 13» | ✅ Layout largo, sticky Salva, foto + meta, ingredienti/passi a 2 col |
 | **Invite link monouso** | «Sessione 8» + «10» | ✅ Copia messaggio (niente email/Resend) |
-| **Deploy prod** | «Sessione 10» + «12» | ✅ Cloudflare + repo GitHub |
+| **Deploy prod** | «Sessione 10» + «12» + «13» | ✅ Cloudflare + repo GitHub |
 
 ---
 
@@ -631,4 +633,50 @@ Import: dose lasciata nel nome, es. `piselli 300 g freschi o surgelati` → Qty/
 - [ ] Material Design 3 formale ancora opzionale
 
 **Deploy:** ✅ Worker + Pages + push GitHub (2026-09-16)
+
+---
+
+## Sessione 13 — 2026-09-16 — Split view desktop + form ricetta ridisegnato
+
+### Segnalazione
+- Confrontare due ricette affiancate solo su desktop
+- Nella split view: X per chiudere accanto a «Cambia ricetta»
+- Ridisegnare tutta la pagina Nuova/Modifica ricetta per desktop (linee guida form)
+
+### Soluzione
+
+**Split view (≥1024px)**
+- URL: `/recipes/:id?split=pick|:otherId`
+- Due pannelli indipendenti (`useRecipeById` — non condividono `selectedRecipe`)
+- Picker ricerca ricette; Scambia / Cambia / ✕ Chiudi
+- Sotto lg: param `split` ignorato (vista singola)
+
+**Form desktop (Carbon / NNG / form lunghi)**
+- Contenitore `max-w-6xl`; barra sticky titolo + Salva / Annulla
+- Dettagli: titolo/meta a sinistra, anteprima foto a destra
+- Ingredienti | Passi affiancati su `xl`
+- Ingredienti: riga unica Nome · Qty · Unità · ✕ + intestazioni colonna
+- Note + checkbox privata; mobile resta a colonna singola
+
+### Branch
+`cursor/desktop-recipe-form-and-split-view` (commit form + split)
+
+### File principali
+| File | Azione |
+|------|--------|
+| `frontend/src/hooks/useRecipeById.js` | **Nuovo** — load per pannello + `useIsDesktopSplit` |
+| `frontend/src/components/recipe/RecipeDetailPane.jsx` | **Nuovo** — contenuto scheda ricetta |
+| `frontend/src/components/recipe/SplitRecipePicker.jsx` | **Nuovo** — scelta seconda ricetta |
+| `frontend/src/pages/RecipeDetail.jsx` | **Modificato** — orchestrazione split |
+| `frontend/src/components/recipe/RecipeForm.jsx` | **Modificato** — layout desktop completo |
+| `frontend/src/pages/AddRecipe.jsx` | **Modificato** — `max-w-6xl`, titolo in sticky bar |
+| `PROGRESS.md` | **Modificato** — questa sessione |
+
+### Todo / note
+- [ ] Confermare redirect Dropbox prod se non già fatto
+- [ ] Owner: frase di recupero offline
+- [ ] Merge branch `cursor/desktop-recipe-form-and-split-view` → `main` + push
+- [ ] Material Design 3 formale ancora opzionale
+
+**Deploy:** ✅ Pages (split + form desktop) — 2026-09-16
 
