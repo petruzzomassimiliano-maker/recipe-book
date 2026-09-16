@@ -273,7 +273,7 @@ export default function RecipeForm({
       <section className={sectionClass}>
         <h2 className={sectionTitleClass}>Dettagli</h2>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px] gap-5 lg:gap-8 items-start">
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_280px] gap-5 lg:gap-8 items-start">
           <div className="space-y-4 lg:space-y-5 min-w-0">
             <label className="block">
               <span className={fieldLabelClass}>Titolo *</span>

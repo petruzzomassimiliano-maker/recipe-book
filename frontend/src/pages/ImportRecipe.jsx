@@ -150,12 +150,21 @@ export default function ImportRecipe() {
   }
 
   return (
-    <main className="max-w-3xl mx-auto px-4 sm:px-6 py-8 animate-fade-in">
-      <h1 className="page-title mb-2">Importa ricetta</h1>
-      <p className="text-sm text-stone-500 mb-6 leading-relaxed">
+    <main className="max-w-3xl lg:max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8 animate-fade-in">
+      <h1 className="page-title mb-2 lg:hidden">Importa ricetta</h1>
+      <p className="text-sm text-stone-500 mb-6 leading-relaxed lg:mt-0">
         URL di un sito, video YouTube, oppure foto di una ricetta (libro / appunti). Controlla sempre
         prima di salvare.
       </p>
+
+      {/* Desktop sticky title when form is open */}
+      {scrape ? (
+        <h1 className="hidden lg:block font-display text-2xl font-semibold text-stone-900 mb-4">
+          Controlla e salva
+        </h1>
+      ) : (
+        <h1 className="hidden lg:block page-title mb-4">Importa ricetta</h1>
+      )}
 
       {restored && (url || scrape) && (
         <div className="mb-4 p-3 bg-teal-50 border border-teal-200 rounded-xl text-sm text-teal-800 flex flex-wrap items-center justify-between gap-2">
@@ -166,91 +175,95 @@ export default function ImportRecipe() {
         </div>
       )}
 
-      <form onSubmit={handleFetch} className="card p-6 mb-4 space-y-4">
-        <label className="block">
-          <span className="text-sm font-medium text-stone-700">URL sito o YouTube</span>
-          <input
-            className="input-field mt-1"
-            type="url"
-            value={url.startsWith('photo:') ? '' : url}
-            onChange={(e) =>
-              setPage((prev) => ({
-                ...prev,
-                url: e.target.value,
-                needTranscript: false
-              }))
-            }
-            placeholder="https://www.youtube.com/watch?v=… oppure ricetta da sito"
-          />
-        </label>
+      {!scrape && (
+        <>
+          <form onSubmit={handleFetch} className="card p-5 sm:p-6 mb-4 space-y-4 max-w-3xl">
+            <label className="block">
+              <span className="text-sm font-medium text-stone-700">URL sito o YouTube</span>
+              <input
+                className="input-field mt-1"
+                type="url"
+                value={url.startsWith('photo:') ? '' : url}
+                onChange={(e) =>
+                  setPage((prev) => ({
+                    ...prev,
+                    url: e.target.value,
+                    needTranscript: false
+                  }))
+                }
+                placeholder="https://www.youtube.com/watch?v=… oppure ricetta da sito"
+              />
+            </label>
 
-        {youtube && (
-          <div className="rounded-xl border border-stone-200 bg-stone-50/80 px-3 py-2 text-xs text-stone-600">
-            Rilevato video YouTube → estrazione da trascrizione / descrizione
-          </div>
-        )}
+            {youtube && (
+              <div className="rounded-xl border border-stone-200 bg-stone-50/80 px-3 py-2 text-xs text-stone-600">
+                Rilevato video YouTube → estrazione da trascrizione / descrizione
+              </div>
+            )}
 
-        {(youtube || needTranscript) && (
-          <label className="block">
-            <span className="text-sm font-medium text-stone-700">
-              Trascrizione manuale {needTranscript ? '(richiesta)' : '(opzionale)'}
-            </span>
-            <textarea
-              className="input-field mt-1 min-h-[120px] font-mono text-sm"
-              value={manualTranscript}
-              onChange={(e) => setPage((prev) => ({ ...prev, manualTranscript: e.target.value }))}
-              placeholder="Se non ci sono sottotitoli automatici, incolla qui la trascrizione o la ricetta dal video…"
+            {(youtube || needTranscript) && (
+              <label className="block">
+                <span className="text-sm font-medium text-stone-700">
+                  Trascrizione manuale {needTranscript ? '(richiesta)' : '(opzionale)'}
+                </span>
+                <textarea
+                  className="input-field mt-1 min-h-[120px] font-mono text-sm"
+                  value={manualTranscript}
+                  onChange={(e) => setPage((prev) => ({ ...prev, manualTranscript: e.target.value }))}
+                  placeholder="Se non ci sono sottotitoli automatici, incolla qui la trascrizione o la ricetta dal video…"
+                />
+              </label>
+            )}
+
+            {error && (
+              <div role="alert" className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+                {error}
+              </div>
+            )}
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={busy || !url.trim() || url.startsWith('photo:')}
+              aria-busy={urlLoading}
+            >
+              {urlLoading
+                ? youtube
+                  ? 'Analisi video…'
+                  : 'Estrazione da URL…'
+                : youtube
+                  ? 'Estrai da YouTube'
+                  : 'Estrai da URL'}
+            </button>
+          </form>
+
+          <div className="card p-5 sm:p-6 mb-8 space-y-3 max-w-3xl">
+            <h2 className="text-sm font-semibold text-stone-800">Oppure da foto</h2>
+            <p className="text-xs text-stone-500">
+              Scatta o carica una foto della ricetta (max 6 MB). Gemini legge ingredienti e passi.
+            </p>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              capture="environment"
+              className="hidden"
+              onChange={handlePhoto}
             />
-          </label>
-        )}
-
-        {error && (
-          <div role="alert" className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
-            {error}
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={busy}
+              onClick={() => fileRef.current?.click()}
+            >
+              {photoLoading ? 'Analisi foto…' : 'Carica / scatta foto'}
+            </button>
           </div>
-        )}
-        <button
-          type="submit"
-          className="btn-primary"
-          disabled={busy || !url.trim() || url.startsWith('photo:')}
-          aria-busy={urlLoading}
-        >
-          {urlLoading
-            ? youtube
-              ? 'Analisi video…'
-              : 'Estrazione da URL…'
-            : youtube
-              ? 'Estrai da YouTube'
-              : 'Estrai da URL'}
-        </button>
-      </form>
-
-      <div className="card p-6 mb-8 space-y-3">
-        <h2 className="text-sm font-semibold text-stone-800">Oppure da foto</h2>
-        <p className="text-xs text-stone-500">
-          Scatta o carica una foto della ricetta (max 6 MB). Gemini legge ingredienti e passi.
-        </p>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          capture="environment"
-          className="hidden"
-          onChange={handlePhoto}
-        />
-        <button
-          type="button"
-          className="btn-secondary"
-          disabled={busy}
-          onClick={() => fileRef.current?.click()}
-        >
-          {photoLoading ? 'Analisi foto…' : 'Carica / scatta foto'}
-        </button>
-      </div>
+        </>
+      )}
 
       {scrape && (
         <>
-          <div className="mb-4 flex flex-wrap items-center gap-2">
+          <div className="mb-4 flex flex-wrap items-center gap-2 lg:hidden">
             <h2 className="section-title">Controlla e salva</h2>
             {scrape.extractMethod && (
               <span className="text-xs px-2 py-1 rounded-lg bg-stone-100 text-stone-600">
@@ -259,6 +272,12 @@ export default function ImportRecipe() {
               </span>
             )}
           </div>
+          {scrape.extractMethod && (
+            <p className="hidden lg:block text-sm text-stone-500 mb-4">
+              via {scrape.extractMethod}
+              {scrape.extractQuality?.score != null ? ` · score ${scrape.extractQuality.score}` : ''}
+            </p>
+          )}
           {scrape.extractWarning && (
             <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
               {scrape.extractWarning}
@@ -267,6 +286,7 @@ export default function ImportRecipe() {
           <RecipeForm
             key={scrape.sourceUrl || url || scrape.title}
             persistKey={formPersistKey(url || scrape.title)}
+            pageTitle="Controlla e salva"
             initialRecipe={{
               title: scrape.title,
               notes: scrape.notes,
