@@ -672,11 +672,16 @@ Import: dose lasciata nel nome, es. `piselli 300 g freschi o surgelati` → Qty/
 | `frontend/src/pages/AddRecipe.jsx` | **Modificato** — `max-w-6xl`, titolo in sticky bar |
 | `PROGRESS.md` | **Modificato** — questa sessione |
 
+### Fix follow-up
+- Import usava `max-w-3xl` e schiacciava il form desktop → allineato a Edit (`lg:max-w-6xl` + `pageTitle`)
+- Deploy Cloud Agent: il secret `CLOUDFLARE_API_TOKEN` in realtà è una **Global API Key** → wrangler va con `CLOUDFLARE_EMAIL` + `CLOUDFLARE_API_KEY` (non Bearer token)
+
 ### Todo / note
 - [ ] Confermare redirect Dropbox prod se non già fatto
 - [ ] Owner: frase di recupero offline
 - [ ] Merge branch `cursor/desktop-recipe-form-and-split-view` → `main` + push
 - [ ] Material Design 3 formale ancora opzionale
+- [ ] (Opzionale) creare un vero API Token Cloudflare Pages:Edit e sostituire la Global API Key nei secret
 
-**Deploy:** ✅ Pages (split + form desktop) — 2026-09-16
+**Deploy:** ✅ Pages production `recipe-book-ap1.pages.dev` (bundle `index-lK9ZDsZP.js`) — 2026-09-16 21:33 UTC
 
