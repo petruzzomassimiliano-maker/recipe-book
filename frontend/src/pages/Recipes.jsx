@@ -8,40 +8,105 @@ function firstName(name) {
   return String(name || 'Utente').trim().split(/\s+/)[0] || 'Utente'
 }
 
+function bareUserId(authorOrId) {
+  return String(authorOrId || '')
+    .trim()
+    .replace(/^user-/, '')
+}
+
 function isSharedWithViewer(recipe, viewerUserId) {
   if (!viewerUserId || !recipe) return false
   const author = recipe.author || ''
-  if (author === `user-${viewerUserId}` || author === viewerUserId) return false
+  const vid = String(viewerUserId)
+  if (author === `user-${vid}` || author === vid) return false
   const ids = recipe.sharedWithUserIds || []
-  return ids.map(String).includes(String(viewerUserId))
+  return ids.map(String).includes(vid)
 }
 
 function isOwnRecipe(recipe, viewerUserId) {
   if (!viewerUserId || !recipe?.author) return false
-  return recipe.author === `user-${viewerUserId}` || recipe.author === viewerUserId
+  const vid = String(viewerUserId)
+  return recipe.author === `user-${vid}` || recipe.author === vid
 }
 
-function groupRecipesByAuthor(recipes, currentAuthorKey) {
-  const map = new Map()
-  for (const recipe of recipes || []) {
-    const key = recipe.author || 'unknown'
-    if (!map.has(key)) {
-      map.set(key, {
-        author: key,
-        name: recipe.authorDisplayName || 'Utente',
-        recipes: []
-      })
+/**
+ * Recipes that belong in a family member's tab when staff inspects them:
+ * - authored by that person, OR
+ * - shared with that person (ownership stays on the sharer).
+ */
+function recipesForPerson(allRecipes, personUserId) {
+  const pid = String(personUserId)
+  if (!pid) return []
+  const seen = new Set()
+  const out = []
+  for (const recipe of allRecipes || []) {
+    if (!recipe?.id || seen.has(recipe.id)) continue
+    const own = isOwnRecipe(recipe, pid)
+    const sharedIn = isSharedWithViewer(recipe, pid)
+    if (!own && !sharedIn) continue
+    seen.add(recipe.id)
+    out.push(recipe)
+  }
+  out.sort((a, b) => {
+    const aOwn = isOwnRecipe(a, pid)
+    const bOwn = isOwnRecipe(b, pid)
+    if (aOwn !== bOwn) return aOwn ? -1 : 1
+    return String(a.title || '').localeCompare(String(b.title || ''), 'it', {
+      sensitivity: 'base'
+    })
+  })
+  return out
+}
+
+/**
+ * Build staff tabs for every other family member who either authored
+ * recipes or received shares — not only authors.
+ */
+function buildOtherPersonTabs(recipes, myUserId) {
+  const people = new Map()
+
+  const ensure = (userId, name) => {
+    const id = bareUserId(userId)
+    if (!id || id === String(myUserId)) return null
+    if (!people.has(id)) {
+      people.set(id, { userId: id, name: name || 'Utente' })
+    } else if (name && people.get(id).name === 'Utente') {
+      people.get(id).name = name
+    } else if (name && name !== 'Utente') {
+      people.get(id).name = name
     }
-    const group = map.get(key)
-    group.recipes.push(recipe)
-    if (recipe.authorDisplayName) group.name = recipe.authorDisplayName
+    return people.get(id)
   }
 
-  return [...map.values()].sort((a, b) => {
-    if (a.author === currentAuthorKey) return -1
-    if (b.author === currentAuthorKey) return 1
-    return a.name.localeCompare(b.name, 'it', { sensitivity: 'base' })
-  })
+  for (const recipe of recipes || []) {
+    const authorId = bareUserId(recipe.author)
+    if (authorId) ensure(authorId, recipe.authorDisplayName)
+
+    for (const sw of recipe.sharedWith || []) {
+      if (sw?.id) ensure(sw.id, sw.displayName)
+    }
+    for (const id of recipe.sharedWithUserIds || []) {
+      ensure(id, null)
+    }
+  }
+
+  const tabs = []
+  for (const person of people.values()) {
+    const list = recipesForPerson(recipes, person.userId)
+    if (!list.length) continue
+    tabs.push({
+      id: `user-${person.userId}`,
+      label: firstName(person.name),
+      count: list.length,
+      recipes: list,
+      // Badges as if viewing that person's account
+      perspectiveUserId: person.userId,
+      sharedInCount: list.filter((r) => isSharedWithViewer(r, person.userId)).length
+    })
+  }
+
+  tabs.sort((a, b) => a.label.localeCompare(b.label, 'it', { sensitivity: 'base' }))
+  return tabs
 }
 
 const SHARED_TAB = '__shared__'
@@ -57,7 +122,6 @@ export default function Recipes() {
     loadRecipes()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const myAuthorKey = user?.id || user?.userId ? `user-${user.id || user.userId}` : null
   const myUserId = user?.id || user?.userId || null
 
   const sharedWithMe = useMemo(
@@ -70,40 +134,35 @@ export default function Recipes() {
     [recipes, myUserId]
   )
 
-  const authorSections = useMemo(() => {
-    if (!isStaff) return []
-    return groupRecipesByAuthor(recipes, myAuthorKey)
-  }, [recipes, isStaff, myAuthorKey])
+  const otherPersonTabs = useMemo(() => {
+    if (!isStaff || !myUserId) return []
+    return buildOtherPersonTabs(recipes, myUserId)
+  }, [recipes, isStaff, myUserId])
 
   const tabs = useMemo(() => {
-    const list = []
-    list.push({
-      id: MINE_TAB,
-      label: 'Tue',
-      count: myRecipes.length,
-      recipes: myRecipes
-    })
+    const list = [
+      {
+        id: MINE_TAB,
+        label: 'Tue',
+        count: myRecipes.length,
+        recipes: myRecipes,
+        perspectiveUserId: myUserId
+      }
+    ]
     if (sharedWithMe.length > 0) {
       list.push({
         id: SHARED_TAB,
         label: 'Condivise',
         count: sharedWithMe.length,
-        recipes: sharedWithMe
+        recipes: sharedWithMe,
+        perspectiveUserId: myUserId
       })
     }
     if (isStaff) {
-      for (const section of authorSections) {
-        if (section.author === myAuthorKey) continue
-        list.push({
-          id: section.author,
-          label: firstName(section.name),
-          count: section.recipes.length,
-          recipes: section.recipes
-        })
-      }
+      list.push(...otherPersonTabs)
     }
     return list
-  }, [myRecipes, sharedWithMe, authorSections, isStaff, myAuthorKey])
+  }, [myRecipes, sharedWithMe, otherPersonTabs, isStaff, myUserId])
 
   useEffect(() => {
     if (!tabs.length) {
@@ -122,6 +181,9 @@ export default function Recipes() {
   )
 
   const visibleCount = active?.recipes?.length ?? recipes.length
+  const listViewerId = active?.perspectiveUserId || myUserId
+  const isOtherPersonTab =
+    active && active.id !== MINE_TAB && active.id !== SHARED_TAB && isStaff
 
   const handleSearch = (e) => {
     e.preventDefault()
@@ -224,9 +286,7 @@ export default function Recipes() {
                     {tab.label}
                     <span
                       className={`tabular-nums text-xs px-1.5 py-0.5 rounded-full ${
-                        selected
-                          ? 'bg-white/20 text-white'
-                          : 'bg-stone-100 text-stone-500'
+                        selected ? 'bg-white/20 text-white' : 'bg-stone-100 text-stone-500'
                       }`}
                     >
                       {tab.count}
@@ -237,13 +297,26 @@ export default function Recipes() {
             </div>
           )}
 
+          {isOtherPersonTab && (
+            <p className="text-xs text-stone-500 leading-relaxed">
+              Vista di <span className="font-medium text-stone-700">{active.label}</span>
+              : le sue ricette
+              {active.sharedInCount > 0
+                ? ` + ${active.sharedInCount} ricevute in condivisione`
+                : ''}
+              .
+            </p>
+          )}
+
           <RecipeList
             recipes={active?.recipes || recipes}
-            viewerUserId={myUserId}
+            viewerUserId={listViewerId}
             emptyMessage={
               activeTab === SHARED_TAB
                 ? 'Nessuna ricetta condivisa con te al momento.'
-                : 'Aggiungi la tua prima ricetta con il pulsante in alto.'
+                : isOtherPersonTab
+                  ? 'Nessuna ricetta propria o condivisa per questa persona.'
+                  : 'Aggiungi la tua prima ricetta con il pulsante in alto.'
             }
           />
         </div>

@@ -349,12 +349,26 @@ recipes.get('/', async (c) => {
     Array.isArray(shareMap[user.userId]) ? shareMap[user.userId].map(String) : []
   )
 
+  // userId → Set(recipeId) from reverse share index (authoritative for recipients)
+  const sharedByRecipe = new Map()
+  for (const [uid, recipeIds] of Object.entries(shareMap)) {
+    if (!Array.isArray(recipeIds)) continue
+    for (const rid of recipeIds) {
+      const key = String(rid)
+      if (!sharedByRecipe.has(key)) sharedByRecipe.set(key, new Set())
+      sharedByRecipe.get(key).add(String(uid))
+    }
+  }
+
   const enriched = index.map((entry) => {
     const fromIndex = sharedWithUserIds(entry)
-    const shared =
-      inboxIds.has(String(entry.id)) && !fromIndex.includes(String(user.userId))
-        ? [...fromIndex, String(user.userId)]
-        : fromIndex
+    const fromMap = sharedByRecipe.get(String(entry.id))
+    const merged = new Set(fromIndex.map(String))
+    if (fromMap) {
+      for (const uid of fromMap) merged.add(uid)
+    }
+    if (inboxIds.has(String(entry.id))) merged.add(String(user.userId))
+    const shared = [...merged]
     const withShares = {
       ...entry,
       sharedWithUserIds: shared,
