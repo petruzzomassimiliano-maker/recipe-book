@@ -696,22 +696,39 @@ Condividere una ricetta da un account a un altro: resta del proprietario, ma l�
 
 ### Soluzione
 - Campo `metadata.sharedWithUserIds` (+ mirror sull’index)
+- Indice inverso `/recipes/recipe-shares.json` (userId → [recipeId]) per liste affidabili
 - `canViewRecipe`: staff **oppure** autore **oppure** in `sharedWithUserIds` (se non privata)
 - `PUT /api/recipes/:id/share` — sostituisce la lista destinatari (ownership invariata)
 - `GET /api/users/peers` — membri famiglia per il picker (qualsiasi utente loggato)
-- UI: pulsante **Condividi** in scheda ricetta; badge «Condivisa con te» in lista
-- Destinatario: solo lettura (niente Modifica / Elimina / IA)
+- Lista/API espongono anche `sharedWith: [{ id, displayName }]`
+- UI: pulsante **Condividi** in scheda; badge con nomi
+- Destinatario: sola lettura (niente Modifica / Elimina / IA)
+- Tab **Condivise** sul account destinatario
+
+### Fix follow-up (stessa sessione)
+1. **Visibilità destinatario** — reverse share map + riparazione sync all’apertura ricetta; tab «Condivise»
+2. **Stato chiaro** — owner vede «Condivisa con Mimma»; sul account mamma «Condivisa da {autore}» + riquadro in scheda
+3. **Tab staff/owner su un familiare** — prima mostrava solo ricette *autoriali* di quella persona → le condivise restavano solo sotto «Tue». Ora il tab (es. Batti) = **sue ricette + ricevute in condivisione** (come vede lei in Condivise), con nota «Vista di … + N ricevute…»
 
 ### File principali
 | File | Azione |
 |------|--------|
 | `worker/src/lib/rbac.js` | **Modificato** — view via share |
-| `worker/src/routes/recipes.js` | **Modificato** — share endpoint + index |
-| `worker/src/routes/users.js` | **Modificato** — `/peers` |
+| `worker/src/routes/recipes.js` | **Modificato** — share, share-map, `sharedWith` in list/get |
+| `worker/src/routes/users.js` | **Modificato** — `/peers` (+ username) |
 | `frontend/src/components/recipe/RecipeSharePanel.jsx` | **Nuovo** |
-| `frontend/src/components/recipe/RecipeDetailPane.jsx` | **Modificato** — Condividi |
-| `frontend/src/components/recipe/RecipeList.jsx` | **Modificato** — badge |
+| `frontend/src/components/recipe/RecipeDetailPane.jsx` | **Modificato** — Condividi + banner stato |
+| `frontend/src/components/recipe/RecipeList.jsx` | **Modificato** — badge nomi |
+| `frontend/src/pages/Recipes.jsx` | **Modificato** — tab Condivise + tab persona con share-in |
 | `frontend/src/services/recipes.js` / `users.js` | **Modificato** |
+| `frontend/src/store/recipeStore.js` | **Modificato** — `sharedWith` in index shape |
 
-**Deploy:** Worker + Pages (questa sessione)
+### Todo / note
+- [ ] Confermare redirect Dropbox prod se non già fatto
+- [ ] Owner: frase di recupero offline
+- [ ] Merge branch `cursor/desktop-recipe-form-and-split-view` → `main` + push
+- [ ] Material Design 3 formale ancora opzionale
+- [ ] (Opzionale) API Token Cloudflare Pages:Edit al posto della Global API Key nei secret
+
+**Deploy:** ✅ Worker + Pages production `recipe-book-ap1.pages.dev` — 2026-09-18
 
