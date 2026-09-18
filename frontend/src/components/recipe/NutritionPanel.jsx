@@ -126,32 +126,34 @@ export default function NutritionPanel({
               : ''}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {hasData && !editing && (
-            <button type="button" className="btn-secondary !py-2 !px-3 text-sm" onClick={startEdit}>
-              Modifica totale
+        {onCalculate ? (
+          <div className="flex flex-wrap gap-2">
+            {hasData && !editing && (
+              <button type="button" className="btn-secondary !py-2 !px-3 text-sm" onClick={startEdit}>
+                Modifica totale
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn-secondary !py-2 !px-3 text-sm"
+              onClick={() => {
+                setAddingFood((v) => !v)
+                setFoodMsg(null)
+              }}
+            >
+              {addingFood ? 'Chiudi form' : '+ Alimento 100 g'}
             </button>
-          )}
-          <button
-            type="button"
-            className="btn-secondary !py-2 !px-3 text-sm"
-            onClick={() => {
-              setAddingFood((v) => !v)
-              setFoodMsg(null)
-            }}
-          >
-            {addingFood ? 'Chiudi form' : '+ Alimento 100 g'}
-          </button>
-          <button
-            type="button"
-            className="btn-secondary !py-2 !px-3 text-sm"
-            onClick={onCalculate}
-            disabled={loading}
-            aria-busy={loading}
-          >
-            {loading ? 'Calcolo…' : hasData ? 'Ricalcola' : 'Calcola calorie'}
-          </button>
-        </div>
+            <button
+              type="button"
+              className="btn-secondary !py-2 !px-3 text-sm"
+              onClick={onCalculate}
+              disabled={loading}
+              aria-busy={loading}
+            >
+              {loading ? 'Calcolo…' : hasData ? 'Ricalcola' : 'Calcola calorie'}
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {error && (

@@ -26,3 +26,11 @@ export function updateRecipe(id, payload) {
 export function deleteRecipe(id) {
   return apiFetch(`/api/recipes/${id}`, { method: 'DELETE' })
 }
+
+/** Replace share recipients (view-only). Ownership unchanged. */
+export function shareRecipe(id, userIds) {
+  return apiFetch(`/api/recipes/${id}/share`, {
+    method: 'PUT',
+    body: JSON.stringify({ userIds: userIds || [] })
+  })
+}

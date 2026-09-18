@@ -687,3 +687,31 @@ Import: dose lasciata nel nome, es. `piselli 300 g freschi o surgelati` → Qty/
 
 **Deploy:** ✅ Pages production `recipe-book-ap1.pages.dev` (bundle `index-lK9ZDsZP.js`) — 2026-09-16 21:33 UTC
 
+---
+
+## Sessione 14 — 2026-09-18 — Condivisione ricette tra account
+
+### Segnalazione
+Condividere una ricetta da un account a un altro: resta del proprietario, ma l’altra persona la vede nella sua lista.
+
+### Soluzione
+- Campo `metadata.sharedWithUserIds` (+ mirror sull’index)
+- `canViewRecipe`: staff **oppure** autore **oppure** in `sharedWithUserIds` (se non privata)
+- `PUT /api/recipes/:id/share` — sostituisce la lista destinatari (ownership invariata)
+- `GET /api/users/peers` — membri famiglia per il picker (qualsiasi utente loggato)
+- UI: pulsante **Condividi** in scheda ricetta; badge «Condivisa con te» in lista
+- Destinatario: solo lettura (niente Modifica / Elimina / IA)
+
+### File principali
+| File | Azione |
+|------|--------|
+| `worker/src/lib/rbac.js` | **Modificato** — view via share |
+| `worker/src/routes/recipes.js` | **Modificato** — share endpoint + index |
+| `worker/src/routes/users.js` | **Modificato** — `/peers` |
+| `frontend/src/components/recipe/RecipeSharePanel.jsx` | **Nuovo** |
+| `frontend/src/components/recipe/RecipeDetailPane.jsx` | **Modificato** — Condividi |
+| `frontend/src/components/recipe/RecipeList.jsx` | **Modificato** — badge |
+| `frontend/src/services/recipes.js` / `users.js` | **Modificato** |
+
+**Deploy:** Worker + Pages (questa sessione)
+

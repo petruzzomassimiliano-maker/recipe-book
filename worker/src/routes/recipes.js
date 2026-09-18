@@ -5,7 +5,9 @@ import {
   canViewRecipe,
   canEditRecipe,
   canDeleteRecipe,
-  isStaff
+  canShareRecipe,
+  isStaff,
+  sharedWithUserIds
 } from '../lib/rbac.js'
 import { authMiddleware } from '../middleware/auth.js'
 import { coerceQuantity } from '../lib/scrapers/_base.js'
@@ -31,6 +33,22 @@ function displayNameForAuthor(author, byKey) {
   const u = byKey.get(author)
   if (!u) return 'Utente'
   return u.displayName || u.username || 'Utente'
+}
+
+/** Bare user UUIDs (no user- prefix), unique, stable order. */
+function normalizeSharedWithUserIds(raw) {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set()
+  const out = []
+  for (const item of raw) {
+    const id = String(item || '')
+      .trim()
+      .replace(/^user-/, '')
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    out.push(id)
+  }
+  return out
 }
 
 /**
@@ -73,6 +91,7 @@ async function resolveAuthorAssignment(client, actor, body) {
 
 function toIndexEntry(recipe, authorDisplayName) {
   const isPrivate = !!recipe.metadata?.isPrivate
+  const shared = isPrivate ? [] : sharedWithUserIds(recipe)
   return {
     id: recipe.id,
     title: recipe.title,
@@ -80,8 +99,9 @@ function toIndexEntry(recipe, authorDisplayName) {
     authorDisplayName:
       authorDisplayName || recipe.authorDisplayName || null,
     tags: recipe.metadata?.tags || [],
-    isShared: isPrivate ? false : recipe.metadata?.isShared !== false,
+    isShared: isPrivate ? false : shared.length > 0 || recipe.metadata?.isShared !== false,
     isPrivate,
+    sharedWithUserIds: shared,
     servings: recipe.metadata?.servings || 1,
     difficulty: recipe.metadata?.difficulty || 'easy',
     imageUrl: recipe.imageUrl || null,
@@ -206,7 +226,10 @@ function normalizeRecipe(input, { id, author, createdAt }) {
       isShared: Boolean(input.isPrivate ?? input.metadata?.isPrivate)
         ? false
         : input.isShared ?? input.metadata?.isShared ?? true,
-      isPublic: false
+      isPublic: false,
+      sharedWithUserIds: normalizeSharedWithUserIds(
+        input.sharedWithUserIds ?? input.metadata?.sharedWithUserIds
+      )
     },
     imageUrl: input.imageUrl || null,
     sourceUrl: input.sourceUrl || null,
@@ -343,6 +366,54 @@ recipes.post('/', async (c) => {
   return c.json({ success: true, data: recipe }, 201)
 })
 
+/**
+ * Replace share list. Recipe stays on the author; recipients only gain view access.
+ * Body: { userIds: string[] }
+ */
+recipes.put('/:id/share', async (c) => {
+  const user = c.get('user')
+  const client = dbx(c)
+  const existing = await client.getRecipe(c.req.param('id'))
+  if (!existing) return c.json({ error: 'Recipe not found' }, 404)
+  if (!canShareRecipe(user, existing)) return c.json({ error: 'Forbidden' }, 403)
+
+  let body
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: 'JSON non valido' }, 400)
+  }
+
+  const requested = normalizeSharedWithUserIds(body?.userIds)
+  const users = await loadUsers(client)
+  const authorId = String(existing.author || '').replace(/^user-/, '')
+  const resolved = []
+  for (const id of requested) {
+    if (id === authorId) continue
+    const target = findUserById(users, id)
+    if (!target) return c.json({ error: `Utente non trovato: ${id}` }, 400)
+    if (target.active === false) {
+      return c.json({ error: `${target.displayName || target.username} è disattivato` }, 400)
+    }
+    resolved.push(id)
+  }
+
+  const recipe = {
+    ...existing,
+    updatedAt: new Date().toISOString(),
+    metadata: {
+      ...(existing.metadata || {}),
+      sharedWithUserIds: resolved,
+      isPrivate: false,
+      isShared: resolved.length > 0 ? true : existing.metadata?.isShared !== false
+    }
+  }
+
+  await client.saveRecipe(recipe.id, recipe)
+  await upsertIndex(client, recipe, recipe.authorDisplayName)
+  return c.json({ success: true, data: recipe })
+})
+
 recipes.put('/:id', async (c) => {
   const user = c.get('user')
   const client = dbx(c)
@@ -370,7 +441,12 @@ recipes.put('/:id', async (c) => {
       ...body,
       cookingMethods: body.cookingMethods ?? existing.cookingMethods,
       cookingMethodsSummary: body.cookingMethodsSummary ?? existing.cookingMethodsSummary,
-      nutritionInfo: body.nutritionInfo ?? existing.nutritionInfo
+      nutritionInfo: body.nutritionInfo ?? existing.nutritionInfo,
+      // Preserve shares unless the client explicitly sends them
+      sharedWithUserIds:
+        body.sharedWithUserIds ??
+        body.metadata?.sharedWithUserIds ??
+        existing.metadata?.sharedWithUserIds
     },
     {
       id: existing.id,
@@ -379,6 +455,10 @@ recipes.put('/:id', async (c) => {
     }
   )
   recipe.authorDisplayName = authorDisplayName
+  if (recipe.metadata.isPrivate) {
+    recipe.metadata.sharedWithUserIds = []
+    recipe.metadata.isShared = false
+  }
 
   const ingredientsChanged = ingredientsSignature(recipe) !== ingredientsSignature(existing)
   const servingsChanged =

@@ -12,6 +12,8 @@ function toIndexShape(recipe) {
     tags: recipe.metadata?.tags || recipe.tags || [],
     isShared: recipe.metadata?.isShared ?? recipe.isShared ?? true,
     isPrivate: recipe.metadata?.isPrivate ?? recipe.isPrivate ?? false,
+    sharedWithUserIds:
+      recipe.metadata?.sharedWithUserIds || recipe.sharedWithUserIds || [],
     servings: recipe.metadata?.servings ?? recipe.servings,
     difficulty: recipe.metadata?.difficulty ?? recipe.difficulty,
     imageUrl: recipe.imageUrl || null,

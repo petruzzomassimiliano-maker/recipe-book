@@ -55,8 +55,35 @@ export function isRecipeAuthor(user, recipe) {
   return author === authorKey(user) || author === user.userId
 }
 
-/** Members see only their recipes; staff see all. */
+/** Shared recipient ids live on recipe.metadata or index entry (bare user UUID). */
+export function sharedWithUserIds(recipe) {
+  const raw = recipe?.metadata?.sharedWithUserIds ?? recipe?.sharedWithUserIds
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((id) => String(id || '').trim().replace(/^user-/, ''))
+    .filter(Boolean)
+}
+
+export function isSharedWithUser(user, recipe) {
+  if (!user?.userId || !recipe) return false
+  if (recipe?.metadata?.isPrivate || recipe?.isPrivate) return false
+  return sharedWithUserIds(recipe).includes(String(user.userId))
+}
+
+/**
+ * Members: own recipes + those shared with them.
+ * Staff: all recipes.
+ * Private recipes are never visible via share (author + staff only).
+ */
 export function canViewRecipe(user, recipe) {
+  if (!recipe) return false
+  if (isStaff(user)) return true
+  if (isRecipeAuthor(user, recipe)) return true
+  return isSharedWithUser(user, recipe)
+}
+
+/** Author or staff can share; ownership does not change. */
+export function canShareRecipe(user, recipe) {
   if (!recipe) return false
   if (isStaff(user)) return true
   return isRecipeAuthor(user, recipe)

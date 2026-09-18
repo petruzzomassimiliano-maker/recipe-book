@@ -42,6 +42,7 @@ export default function Recipes() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const myAuthorKey = user?.id || user?.userId ? `user-${user.id || user.userId}` : null
+  const myUserId = user?.id || user?.userId || null
 
   const sections = useMemo(() => {
     if (!isStaff) return null
@@ -143,6 +144,7 @@ export default function Recipes() {
         sections.length === 0 ? (
           <RecipeList
             recipes={[]}
+            viewerUserId={myUserId}
             emptyMessage="Aggiungi la tua prima ricetta con il pulsante in alto."
           />
         ) : (
@@ -185,6 +187,7 @@ export default function Recipes() {
             {activeSection && (
               <RecipeList
                 recipes={activeSection.recipes}
+                viewerUserId={myUserId}
                 emptyMessage="Nessuna ricetta per questa persona."
               />
             )}
@@ -193,6 +196,7 @@ export default function Recipes() {
       ) : (
         <RecipeList
           recipes={recipes}
+          viewerUserId={myUserId}
           emptyMessage="Aggiungi la tua prima ricetta con il pulsante in alto."
         />
       )}
