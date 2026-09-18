@@ -48,6 +48,7 @@ users.get('/peers', async (c) => {
     .filter((u) => u.active !== false && u.id !== me.userId)
     .map((u) => ({
       id: u.id,
+      username: u.username,
       displayName: u.displayName || u.username || 'Utente',
       role: u.role
     }))

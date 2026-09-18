@@ -110,6 +110,47 @@ function toIndexEntry(recipe, authorDisplayName) {
   }
 }
 
+const SHARES_PATH = '/recipes/recipe-shares.json'
+
+async function loadShareMap(client) {
+  const raw = await client.readJSON(SHARES_PATH)
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
+}
+
+async function saveShareMap(client, map) {
+  await client.createFolderIfNotExists('/recipes')
+  return client.writeJSON(SHARES_PATH, map)
+}
+
+/**
+ * Reverse index: userId → [recipeId]. Keeps recipient lists reliable
+ * even if recipes-index.json is stale.
+ */
+async function syncShareMapForRecipe(client, recipeId, userIds) {
+  const map = await loadShareMap(client)
+  const id = String(recipeId)
+  const targets = new Set(normalizeSharedWithUserIds(userIds))
+
+  for (const [uid, list] of Object.entries(map)) {
+    if (!Array.isArray(list)) {
+      delete map[uid]
+      continue
+    }
+    const next = list.filter((rid) => rid !== id)
+    if (next.length) map[uid] = next
+    else delete map[uid]
+  }
+
+  for (const uid of targets) {
+    const list = Array.isArray(map[uid]) ? [...map[uid]] : []
+    if (!list.includes(id)) list.push(id)
+    map[uid] = list
+  }
+
+  await saveShareMap(client, map)
+  return map
+}
+
 /**
  * Recipes without a valid family user author → assign to owner.
  * Updates index + recipe files when needed.
@@ -293,14 +334,29 @@ recipes.get('/', async (c) => {
   const users = await loadUsers(client)
   const rawIndex = await client.getRecipesIndex()
   const { index, byKey } = await migrateOrphanRecipesToOwner(client, rawIndex, users)
+  const shareMap = await loadShareMap(client)
+  const inboxIds = new Set(
+    Array.isArray(shareMap[user.userId]) ? shareMap[user.userId].map(String) : []
+  )
 
-  const enriched = index.map((entry) => ({
-    ...entry,
-    authorDisplayName:
-      entry.authorDisplayName || displayNameForAuthor(entry.author, byKey)
-  }))
+  const enriched = index.map((entry) => {
+    const fromIndex = sharedWithUserIds(entry)
+    const shared =
+      inboxIds.has(String(entry.id)) && !fromIndex.includes(String(user.userId))
+        ? [...fromIndex, String(user.userId)]
+        : fromIndex
+    return {
+      ...entry,
+      sharedWithUserIds: shared,
+      isPrivate: !!entry.isPrivate,
+      authorDisplayName:
+        entry.authorDisplayName || displayNameForAuthor(entry.author, byKey)
+    }
+  })
 
-  const visible = enriched.filter((entry) => canViewRecipe(user, entry))
+  const visible = enriched.filter(
+    (entry) => canViewRecipe(user, entry) || inboxIds.has(String(entry.id))
+  )
   const filtered = q
     ? visible.filter((entry) => {
         const tags = (entry.tags || []).join(' ').toLowerCase()
@@ -337,7 +393,26 @@ recipes.get('/:id', async (c) => {
     recipe.authorDisplayName = displayNameForAuthor(recipe.author, byKey)
   }
 
-  if (!canViewRecipe(user, recipe)) return c.json({ error: 'Forbidden' }, 403)
+  const shareMap = await loadShareMap(client)
+  const inInbox = Array.isArray(shareMap[user.userId])
+    ? shareMap[user.userId].map(String).includes(String(recipe.id))
+    : false
+
+  if (!canViewRecipe(user, recipe) && !inInbox) {
+    return c.json({ error: 'Forbidden' }, 403)
+  }
+
+  // Keep reverse share index in sync with the recipe file (repairs older shares)
+  const fileShares = sharedWithUserIds(recipe)
+  if (fileShares.length > 0 || inInbox) {
+    try {
+      await syncShareMapForRecipe(client, recipe.id, fileShares)
+      await upsertIndex(client, recipe, recipe.authorDisplayName)
+    } catch (err) {
+      console.warn('[recipes] share sync on get:', err.message)
+    }
+  }
+
   return c.json({ success: true, data: recipe })
 })
 
@@ -411,7 +486,19 @@ recipes.put('/:id/share', async (c) => {
 
   await client.saveRecipe(recipe.id, recipe)
   await upsertIndex(client, recipe, recipe.authorDisplayName)
-  return c.json({ success: true, data: recipe })
+  await syncShareMapForRecipe(client, recipe.id, resolved)
+  return c.json({
+    success: true,
+    data: recipe,
+    sharedWithUserIds: resolved,
+    sharedWith: resolved.map((id) => {
+      const u = findUserById(users, id)
+      return {
+        id,
+        displayName: u?.displayName || u?.username || id
+      }
+    })
+  })
 })
 
 recipes.put('/:id', async (c) => {
@@ -472,6 +559,11 @@ recipes.put('/:id', async (c) => {
 
   await client.saveRecipe(recipe.id, recipe)
   await upsertIndex(client, recipe, recipe.authorDisplayName)
+  const prevShared = sharedWithUserIds(existing)
+  const nextShared = sharedWithUserIds(recipe)
+  if (prevShared.join(',') !== nextShared.join(',')) {
+    await syncShareMapForRecipe(client, recipe.id, nextShared)
+  }
   return c.json({ success: true, data: recipe })
 })
 
@@ -494,6 +586,11 @@ recipes.delete('/:id', async (c) => {
     console.warn('[recipes/delete] file:', err.message)
   }
   await client.saveRecipesIndex(next)
+  try {
+    await syncShareMapForRecipe(client, id, [])
+  } catch (err) {
+    console.warn('[recipes/delete] share map:', err.message)
+  }
 
   return c.json({ success: true, data: { id } })
 })

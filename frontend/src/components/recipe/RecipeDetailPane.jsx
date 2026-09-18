@@ -51,7 +51,7 @@ export default function RecipeDetailPane({
   const navigate = useNavigate()
   const { user, isStaff } = useAuth()
   const { recipe, setRecipe, isLoading, error, indexEntry } = useRecipeById(recipeId)
-  const { deleteRecipe } = useRecipes()
+  const { deleteRecipe, loadRecipes } = useRecipes()
   const { addRecipeIngredients } = useShoppingList()
 
   const [listMsg, setListMsg] = useState(null)
@@ -697,7 +697,10 @@ export default function RecipeDetailPane({
       {shareOpen && (
         <RecipeSharePanel
           recipe={current}
-          onUpdated={(updated) => setRecipe(updated)}
+          onUpdated={(updated) => {
+            setRecipe(updated)
+            loadRecipes().catch(() => {})
+          }}
           onClose={() => setShareOpen(false)}
         />
       )}

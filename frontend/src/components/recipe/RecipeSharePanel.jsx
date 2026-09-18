@@ -7,19 +7,17 @@ import { shareRecipe } from '../../services/recipes.js'
  * Ownership stays on the author.
  */
 export default function RecipeSharePanel({ recipe, onUpdated, onClose }) {
+  const initialKey = (recipe?.metadata?.sharedWithUserIds || recipe?.sharedWithUserIds || [])
+    .map(String)
+    .sort()
+    .join(',')
+
   const [peers, setPeers] = useState([])
-  const [selected, setSelected] = useState(() => new Set())
+  const [selected, setSelected] = useState(() => new Set(initialKey ? initialKey.split(',') : []))
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
-
-  const initialIds = useMemo(
-    () =>
-      new Set(
-        (recipe?.metadata?.sharedWithUserIds || recipe?.sharedWithUserIds || []).map(String)
-      ),
-    [recipe]
-  )
+  const [savedMsg, setSavedMsg] = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -29,7 +27,7 @@ export default function RecipeSharePanel({ recipe, onUpdated, onClose }) {
       .then((res) => {
         if (cancelled) return
         setPeers(res.data || [])
-        setSelected(new Set(initialIds))
+        setSelected(new Set(initialKey ? initialKey.split(',') : []))
       })
       .catch((err) => {
         if (!cancelled) setError(err.message || 'Impossibile caricare i membri')
@@ -40,9 +38,14 @@ export default function RecipeSharePanel({ recipe, onUpdated, onClose }) {
     return () => {
       cancelled = true
     }
-  }, [initialIds])
+  }, [initialKey])
+
+  const selectedNames = useMemo(() => {
+    return peers.filter((p) => selected.has(p.id)).map((p) => p.displayName)
+  }, [peers, selected])
 
   const toggle = (id) => {
+    setSavedMsg(null)
     setSelected((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
@@ -54,10 +57,17 @@ export default function RecipeSharePanel({ recipe, onUpdated, onClose }) {
   const handleSave = async () => {
     setSaving(true)
     setError(null)
+    setSavedMsg(null)
     try {
       const res = await shareRecipe(recipe.id, [...selected])
       onUpdated?.(res.data)
-      onClose?.()
+      const names = (res.sharedWith || []).map((p) => p.displayName).filter(Boolean)
+      setSavedMsg(
+        names.length
+          ? `Ora visibile a: ${names.join(', ')}. Chiedi di aprire Ricette → Condivise.`
+          : 'Condivisione rimossa. Nessun altro account la vede.'
+      )
+      setTimeout(() => onClose?.(), names.length ? 1600 : 900)
     } catch (err) {
       setError(err.message || 'Condivisione fallita')
     } finally {
@@ -81,7 +91,8 @@ export default function RecipeSharePanel({ recipe, onUpdated, onClose }) {
             Condividi ricetta
           </h2>
           <p className="mt-1 text-sm text-stone-500 leading-relaxed">
-            Resta tua: gli altri la vedono nella loro lista, senza poterla modificare.
+            Resta tua: gli altri la vedono nella scheda <strong>Condivise</strong> della loro lista,
+            senza poterla modificare.
           </p>
         </div>
 
@@ -90,6 +101,11 @@ export default function RecipeSharePanel({ recipe, onUpdated, onClose }) {
           {error && (
             <p className="mb-3 text-sm text-red-600" role="alert">
               {error}
+            </p>
+          )}
+          {savedMsg && (
+            <p className="mb-3 text-sm text-teal-700" role="status">
+              {savedMsg}
             </p>
           )}
           {!loading && peers.length === 0 && (
@@ -114,13 +130,19 @@ export default function RecipeSharePanel({ recipe, onUpdated, onClose }) {
                         <span className="block text-sm font-medium text-stone-800 truncate">
                           {peer.displayName}
                         </span>
-                        <span className="block text-xs text-stone-400 capitalize">{peer.role}</span>
+                        <span className="block text-xs text-stone-400">
+                          {peer.username ? `@${peer.username} · ` : ''}
+                          {peer.role}
+                        </span>
                       </span>
                     </label>
                   </li>
                 )
               })}
             </ul>
+          )}
+          {!loading && selectedNames.length > 0 && !savedMsg && (
+            <p className="mt-3 text-xs text-stone-500">Selezionati: {selectedNames.join(', ')}</p>
           )}
         </div>
 
