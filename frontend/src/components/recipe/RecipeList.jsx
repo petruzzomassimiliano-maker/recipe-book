@@ -22,6 +22,48 @@ function isSharedWithViewer(recipe, viewerUserId) {
   return ids.map(String).includes(String(viewerUserId))
 }
 
+function isOwnRecipe(recipe, viewerUserId) {
+  if (!viewerUserId || !recipe?.author) return false
+  return recipe.author === `user-${viewerUserId}` || recipe.author === viewerUserId
+}
+
+function sharedOutNames(recipe) {
+  const names = (recipe.sharedWith || []).map((p) => p.displayName).filter(Boolean)
+  if (names.length) return names
+  const n = (recipe.sharedWithUserIds || []).length
+  return n ? [`${n} ${n === 1 ? 'persona' : 'persone'}`] : []
+}
+
+function ShareBadge({ recipe, viewerUserId }) {
+  const sharedIn = isSharedWithViewer(recipe, viewerUserId)
+  if (sharedIn) {
+    return (
+      <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-lg bg-teal-50 text-teal-800 text-[11px] font-semibold border border-teal-100">
+        Condivisa da {recipe.authorDisplayName || 'un familiare'}
+      </span>
+    )
+  }
+  if (isOwnRecipe(recipe, viewerUserId)) {
+    const names = sharedOutNames(recipe)
+    if (!names.length) return null
+    return (
+      <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-lg bg-stone-100 text-stone-700 text-[11px] font-semibold border border-stone-200">
+        Condivisa con {names.join(', ')}
+      </span>
+    )
+  }
+  // Staff viewing someone else's recipe that is shared out
+  const names = sharedOutNames(recipe)
+  if (names.length) {
+    return (
+      <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-lg bg-stone-100 text-stone-600 text-[11px] font-medium border border-stone-200">
+        Condivisa con {names.join(', ')}
+      </span>
+    )
+  }
+  return null
+}
+
 /**
  * Mobile: single-column list (image left + text) for denser scanning.
  * sm+: visual grid of cards (food catalog pattern).
@@ -38,15 +80,16 @@ export default function RecipeList({ recipes, emptyMessage, viewerUserId = null 
 
   return (
     <>
-      {/* Mobile list */}
       <ul className="sm:hidden space-y-2.5" aria-label="Elenco ricette">
         {recipes.map((recipe) => {
-          const shared = isSharedWithViewer(recipe, viewerUserId)
+          const sharedIn = isSharedWithViewer(recipe, viewerUserId)
           return (
             <li key={recipe.id}>
               <Link
                 to={`/recipes/${recipe.id}`}
-                className="flex gap-3 items-center min-h-[88px] rounded-2xl border border-stone-200/80 bg-white p-2 pr-3 active:bg-stone-50 transition-colors"
+                className={`flex gap-3 items-center min-h-[88px] rounded-2xl border bg-white p-2 pr-3 active:bg-stone-50 transition-colors ${
+                  sharedIn ? 'border-teal-200/90' : 'border-stone-200/80'
+                }`}
               >
                 {recipe.imageUrl ? (
                   <div className="w-[72px] h-[72px] shrink-0 rounded-xl overflow-hidden bg-stone-100">
@@ -69,18 +112,9 @@ export default function RecipeList({ recipes, emptyMessage, viewerUserId = null 
                     {recipe.title}
                   </h3>
                   <p className="text-xs text-stone-500 mt-1 truncate">
-                    {shared && recipe.authorDisplayName
-                      ? `di ${recipe.authorDisplayName} · `
-                      : ''}
                     <RecipeMeta recipe={recipe} />
                   </p>
-                  {shared ? (
-                    <p className="text-[11px] font-medium text-teal-700 mt-1">Condivisa con te</p>
-                  ) : !!recipe.tags?.length ? (
-                    <p className="text-[11px] text-stone-400 mt-1 truncate">
-                      {recipe.tags.slice(0, 3).join(' · ')}
-                    </p>
-                  ) : null}
+                  <ShareBadge recipe={recipe} viewerUserId={viewerUserId} />
                 </div>
                 <span className="text-stone-300 shrink-0" aria-hidden>
                   →
@@ -91,15 +125,16 @@ export default function RecipeList({ recipes, emptyMessage, viewerUserId = null 
         })}
       </ul>
 
-      {/* Tablet / desktop grid */}
       <div className="hidden sm:grid grid-cols-2 lg:grid-cols-3 gap-4">
         {recipes.map((recipe) => {
-          const shared = isSharedWithViewer(recipe, viewerUserId)
+          const sharedIn = isSharedWithViewer(recipe, viewerUserId)
           return (
             <Link
               key={recipe.id}
               to={`/recipes/${recipe.id}`}
-              className="group card overflow-hidden p-0 hover:-translate-y-0.5 transition-transform"
+              className={`group card overflow-hidden p-0 hover:-translate-y-0.5 transition-transform ${
+                sharedIn ? 'ring-1 ring-teal-200' : ''
+              }`}
             >
               {recipe.imageUrl ? (
                 <div className="aspect-[16/10] bg-stone-100 overflow-hidden">
@@ -120,14 +155,9 @@ export default function RecipeList({ recipes, emptyMessage, viewerUserId = null 
                   {recipe.title}
                 </h3>
                 <p className="text-sm text-stone-500 mt-1.5">
-                  {shared && recipe.authorDisplayName
-                    ? `di ${recipe.authorDisplayName} · `
-                    : ''}
                   <RecipeMeta recipe={recipe} />
                 </p>
-                {shared && (
-                  <p className="text-xs font-medium text-teal-700 mt-2">Condivisa con te</p>
-                )}
+                <ShareBadge recipe={recipe} viewerUserId={viewerUserId} />
                 {!!recipe.tags?.length && (
                   <div className="flex flex-wrap gap-1.5 mt-3">
                     {recipe.tags.slice(0, 4).map((tag) => (

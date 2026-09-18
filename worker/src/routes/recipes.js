@@ -327,6 +327,16 @@ function ingredientsSignature(recipe) {
   )
 }
 
+function resolveSharedWith(users, recipeOrEntry) {
+  return sharedWithUserIds(recipeOrEntry).map((id) => {
+    const u = findUserById(users, id)
+    return {
+      id,
+      displayName: u?.displayName || u?.username || 'Utente'
+    }
+  })
+}
+
 recipes.get('/', async (c) => {
   const user = c.get('user')
   const q = (c.req.query('q') || '').trim().toLowerCase()
@@ -345,12 +355,16 @@ recipes.get('/', async (c) => {
       inboxIds.has(String(entry.id)) && !fromIndex.includes(String(user.userId))
         ? [...fromIndex, String(user.userId)]
         : fromIndex
-    return {
+    const withShares = {
       ...entry,
       sharedWithUserIds: shared,
       isPrivate: !!entry.isPrivate,
       authorDisplayName:
         entry.authorDisplayName || displayNameForAuthor(entry.author, byKey)
+    }
+    return {
+      ...withShares,
+      sharedWith: resolveSharedWith(users, withShares)
     }
   })
 
@@ -413,7 +427,13 @@ recipes.get('/:id', async (c) => {
     }
   }
 
-  return c.json({ success: true, data: recipe })
+  return c.json({
+    success: true,
+    data: {
+      ...recipe,
+      sharedWith: resolveSharedWith(users, recipe)
+    }
+  })
 })
 
 recipes.post('/', async (c) => {
