@@ -4,6 +4,11 @@ export function listUsers() {
   return apiFetch('/api/users')
 }
 
+/** Active family members for sharing (excludes self). */
+export function listPeers() {
+  return apiFetch('/api/users/peers')
+}
+
 export function getMe() {
   return apiFetch('/api/users/me')
 }

@@ -37,6 +37,25 @@ users.get('/', async (c) => {
   return c.json({ success: true, data: list.map(publicUser) })
 })
 
+/**
+ * Active family members for recipe sharing (any authenticated user).
+ * Excludes self; returns only display fields.
+ */
+users.get('/peers', async (c) => {
+  const me = c.get('user')
+  const list = await loadUsers(c.get('dbx'))
+  const peers = list
+    .filter((u) => u.active !== false && u.id !== me.userId)
+    .map((u) => ({
+      id: u.id,
+      username: u.username,
+      displayName: u.displayName || u.username || 'Utente',
+      role: u.role
+    }))
+    .sort((a, b) => a.displayName.localeCompare(b.displayName, 'it', { sensitivity: 'base' }))
+  return c.json({ success: true, data: peers })
+})
+
 users.get('/me', async (c) => {
   const list = await loadUsers(c.get('dbx'))
   const me = findUserById(list, c.get('user').userId)

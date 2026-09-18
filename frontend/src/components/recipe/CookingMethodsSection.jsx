@@ -86,15 +86,17 @@ export default function CookingMethodsSection({
             Tocca un’icona per aprire i consigli · ritocca per chiudere
           </p>
         </div>
-        <button
-          type="button"
-          className="btn-secondary !py-2 !px-3 text-sm"
-          onClick={onAnalyze}
-          disabled={loading && !loadingMethod}
-          aria-busy={loading && !loadingMethod}
-        >
-          {loading && !loadingMethod ? 'Analisi…' : methods?.length ? 'Aggiorna tutti' : 'Rileva con IA'}
-        </button>
+        {onAnalyze ? (
+          <button
+            type="button"
+            className="btn-secondary !py-2 !px-3 text-sm"
+            onClick={onAnalyze}
+            disabled={loading && !loadingMethod}
+            aria-busy={loading && !loadingMethod}
+          >
+            {loading && !loadingMethod ? 'Analisi…' : methods?.length ? 'Aggiorna tutti' : 'Rileva con IA'}
+          </button>
+        ) : null}
       </div>
 
       {error && (

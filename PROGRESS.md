@@ -22,8 +22,10 @@
 | **PWA + offline sync** | «Sessione 6» + «8» | ✅ Build + SW verificati (`dist/sw.js`) |
 | **Foto → Gemini Vision** | «Sessione 8» | ✅ Import da foto |
 | **Foto ricetta (upload)** | «Sessione 12» | ✅ Scatta / carica / URL → Dropbox `/recipes/images` |
+| **Split view desktop** | «Sessione 13» | ✅ Due ricette affiancate (`?split=`) ≥1024px |
+| **Form ricetta desktop** | «Sessione 13» | ✅ Layout largo, sticky Salva, foto + meta, ingredienti/passi a 2 col |
 | **Invite link monouso** | «Sessione 8» + «10» | ✅ Copia messaggio (niente email/Resend) |
-| **Deploy prod** | «Sessione 10» + «12» | ✅ Cloudflare + repo GitHub |
+| **Deploy prod** | «Sessione 10» + «12» + «13» | ✅ Cloudflare + repo GitHub |
 
 ---
 
@@ -631,4 +633,102 @@ Import: dose lasciata nel nome, es. `piselli 300 g freschi o surgelati` → Qty/
 - [ ] Material Design 3 formale ancora opzionale
 
 **Deploy:** ✅ Worker + Pages + push GitHub (2026-09-16)
+
+---
+
+## Sessione 13 — 2026-09-16 — Split view desktop + form ricetta ridisegnato
+
+### Segnalazione
+- Confrontare due ricette affiancate solo su desktop
+- Nella split view: X per chiudere accanto a «Cambia ricetta»
+- Ridisegnare tutta la pagina Nuova/Modifica ricetta per desktop (linee guida form)
+
+### Soluzione
+
+**Split view (≥1024px)**
+- URL: `/recipes/:id?split=pick|:otherId`
+- Due pannelli indipendenti (`useRecipeById` — non condividono `selectedRecipe`)
+- Picker ricerca ricette; Scambia / Cambia / ✕ Chiudi
+- Sotto lg: param `split` ignorato (vista singola)
+
+**Form desktop (Carbon / NNG / form lunghi)**
+- Contenitore `max-w-6xl`; barra sticky titolo + Salva / Annulla
+- Dettagli: titolo/meta a sinistra, anteprima foto a destra
+- Ingredienti | Passi affiancati su `xl`
+- Ingredienti: riga unica Nome · Qty · Unità · ✕ + intestazioni colonna
+- Note + checkbox privata; mobile resta a colonna singola
+
+### Branch
+`cursor/desktop-recipe-form-and-split-view` (commit form + split)
+
+### File principali
+| File | Azione |
+|------|--------|
+| `frontend/src/hooks/useRecipeById.js` | **Nuovo** — load per pannello + `useIsDesktopSplit` |
+| `frontend/src/components/recipe/RecipeDetailPane.jsx` | **Nuovo** — contenuto scheda ricetta |
+| `frontend/src/components/recipe/SplitRecipePicker.jsx` | **Nuovo** — scelta seconda ricetta |
+| `frontend/src/pages/RecipeDetail.jsx` | **Modificato** — orchestrazione split |
+| `frontend/src/components/recipe/RecipeForm.jsx` | **Modificato** — layout desktop completo |
+| `frontend/src/pages/AddRecipe.jsx` | **Modificato** — `max-w-6xl`, titolo in sticky bar |
+| `PROGRESS.md` | **Modificato** — questa sessione |
+
+### Fix follow-up
+- Import usava `max-w-3xl` e schiacciava il form desktop → allineato a Edit (`lg:max-w-6xl` + `pageTitle`)
+- Ripristinato **Ingredienti | Passi a 2 colonne su `lg+`** (Nuova / Modifica / Import condividono `RecipeForm`); mobile resta in colonna
+- Griglia riga ingredienti esplicita (niente `display:contents`) per evitare nomi verticali
+- Deploy Cloud Agent: il secret `CLOUDFLARE_API_TOKEN` in realtà è una **Global API Key** → wrangler va con `CLOUDFLARE_EMAIL` + `CLOUDFLARE_API_KEY` (non Bearer token)
+
+### Todo / note
+- [ ] Confermare redirect Dropbox prod se non già fatto
+- [ ] Owner: frase di recupero offline
+- [ ] Merge branch `cursor/desktop-recipe-form-and-split-view` → `main` + push
+- [ ] Material Design 3 formale ancora opzionale
+- [ ] (Opzionale) creare un vero API Token Cloudflare Pages:Edit e sostituire la Global API Key nei secret
+
+**Deploy:** ✅ Pages production `recipe-book-ap1.pages.dev` (bundle `index-lK9ZDsZP.js`) — 2026-09-16 21:33 UTC
+
+---
+
+## Sessione 14 — 2026-09-18 — Condivisione ricette tra account
+
+### Segnalazione
+Condividere una ricetta da un account a un altro: resta del proprietario, ma l’altra persona la vede nella sua lista.
+
+### Soluzione
+- Campo `metadata.sharedWithUserIds` (+ mirror sull’index)
+- Indice inverso `/recipes/recipe-shares.json` (userId → [recipeId]) per liste affidabili
+- `canViewRecipe`: staff **oppure** autore **oppure** in `sharedWithUserIds` (se non privata)
+- `PUT /api/recipes/:id/share` — sostituisce la lista destinatari (ownership invariata)
+- `GET /api/users/peers` — membri famiglia per il picker (qualsiasi utente loggato)
+- Lista/API espongono anche `sharedWith: [{ id, displayName }]`
+- UI: pulsante **Condividi** in scheda; badge con nomi
+- Destinatario: sola lettura (niente Modifica / Elimina / IA)
+- Tab **Condivise** sul account destinatario
+
+### Fix follow-up (stessa sessione)
+1. **Visibilità destinatario** — reverse share map + riparazione sync all’apertura ricetta; tab «Condivise»
+2. **Stato chiaro** — owner vede «Condivisa con Mimma»; sul account mamma «Condivisa da {autore}» + riquadro in scheda
+3. **Tab staff/owner su un familiare** — prima mostrava solo ricette *autoriali* di quella persona → le condivise restavano solo sotto «Tue». Ora il tab (es. Batti) = **sue ricette + ricevute in condivisione** (come vede lei in Condivise), con nota «Vista di … + N ricevute…»
+
+### File principali
+| File | Azione |
+|------|--------|
+| `worker/src/lib/rbac.js` | **Modificato** — view via share |
+| `worker/src/routes/recipes.js` | **Modificato** — share, share-map, `sharedWith` in list/get |
+| `worker/src/routes/users.js` | **Modificato** — `/peers` (+ username) |
+| `frontend/src/components/recipe/RecipeSharePanel.jsx` | **Nuovo** |
+| `frontend/src/components/recipe/RecipeDetailPane.jsx` | **Modificato** — Condividi + banner stato |
+| `frontend/src/components/recipe/RecipeList.jsx` | **Modificato** — badge nomi |
+| `frontend/src/pages/Recipes.jsx` | **Modificato** — tab Condivise + tab persona con share-in |
+| `frontend/src/services/recipes.js` / `users.js` | **Modificato** |
+| `frontend/src/store/recipeStore.js` | **Modificato** — `sharedWith` in index shape |
+
+### Todo / note
+- [ ] Confermare redirect Dropbox prod se non già fatto
+- [ ] Owner: frase di recupero offline
+- [ ] Merge branch `cursor/desktop-recipe-form-and-split-view` → `main` + push
+- [ ] Material Design 3 formale ancora opzionale
+- [ ] (Opzionale) API Token Cloudflare Pages:Edit al posto della Global API Key nei secret
+
+**Deploy:** ✅ Worker + Pages production `recipe-book-ap1.pages.dev` — 2026-09-18
 
