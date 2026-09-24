@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useKeepAwakeStore } from '../store/keepAwakeStore.js'
+import { useKeepAwakeStore } from '../../store/keepAwakeStore.js'
 
 function isWakeLockSupported() {
   return typeof navigator !== 'undefined' && 'wakeLock' in navigator
