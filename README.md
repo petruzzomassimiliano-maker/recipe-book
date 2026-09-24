@@ -72,18 +72,15 @@ node scripts/reset-owner-password.mjs --password 'NuovaPass8+'
 
 ## Deploy
 
-```bash
-# Worker
-cd worker && npx wrangler deploy
+**Regola:** ogni deploy su Cloudflare deve corrispondere a un commit già su GitHub.
 
-# Pages — build con URL Worker di produzione
-cd frontend
-VITE_WORKER_URL="https://recipe-book-worker.petruzzo-massimiliano-b40.workers.dev" \
-VITE_DROPBOX_REDIRECT_URI="https://recipe-book-ap1.pages.dev/dropbox-callback" \
-VITE_APP_ENV=production \
-npm run build
-npx wrangler pages deploy dist --project-name=recipe-book
+```bash
+git add -A && git commit -m "…"
+npm run deploy                 # push GitHub → Worker → build → Pages (con hash del commit)
+SKIP_WORKER=1 npm run deploy   # solo frontend
 ```
+
+`scripts/deploy.sh` si ferma se ci sono modifiche non committate o se il push su GitHub fallisce, così la produzione non contiene mai codice assente da GitHub.
 
 I secret del Worker (Dropbox, JWT, Gemini, `FAMILY_DROPBOX_REFRESH_TOKEN`, …) vanno impostati con `wrangler secret put`, non nel repo.
 

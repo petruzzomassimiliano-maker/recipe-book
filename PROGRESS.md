@@ -2,6 +2,7 @@
 
 > **Aggiorna questo file alla fine di ogni sessione dev**
 > **All'inizio della sessione successiva, leggi QUESTO file prima di qualsiasi altra cosa**
+> **Deploy solo con `npm run deploy`:** carica prima su GitHub (commit + push obbligatori), poi Worker + Pages con l’hash del commit. Mai deploy Cloudflare di codice non presente su GitHub.
 
 ---
 
