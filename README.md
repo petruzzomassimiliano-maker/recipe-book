@@ -80,7 +80,7 @@ npm run deploy                 # push GitHub → Worker → build → Pages (con
 SKIP_WORKER=1 npm run deploy   # solo frontend
 ```
 
-`scripts/deploy.sh` si ferma se ci sono modifiche non committate o se il push su GitHub fallisce, così la produzione non contiene mai codice assente da GitHub.
+`scripts/deploy.sh` si ferma se ci sono modifiche non committate o se il push su GitHub fallisce, così la produzione non contiene mai codice assente da GitHub. Se lavori su un branch, porta anche `main` su GitHub allo stesso commit (solo fast-forward: se `main` ha commit diversi avvisa e non tocca nulla).
 
 I secret del Worker (Dropbox, JWT, Gemini, `FAMILY_DROPBOX_REFRESH_TOKEN`, …) vanno impostati con `wrangler secret put`, non nel repo.
 

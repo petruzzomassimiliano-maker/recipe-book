@@ -47,6 +47,20 @@ SHORT="$(git rev-parse --short HEAD)"
 SUBJECT="$(git log -1 --format=%s)"
 echo "  ✓ GitHub aggiornato: $BRANCH @ $SHORT"
 
+# Production = main: keep GitHub main on the deployed commit (fast-forward only, never force).
+if [ "$BRANCH" != "main" ]; then
+  git fetch -q origin main || true
+  if git merge-base --is-ancestor origin/main HEAD 2>/dev/null; then
+    if git push origin "HEAD:main"; then
+      echo "  ✓ GitHub main allineato a $SHORT"
+    else
+      echo "  ⚠ Push su main non riuscito: main resta indietro (il deploy prosegue dal branch $BRANCH)"
+    fi
+  else
+    echo "  ⚠ main su GitHub ha commit non presenti in $BRANCH: nessun merge automatico, allinearlo a mano"
+  fi
+fi
+
 if [ -z "${SKIP_WORKER:-}" ]; then
   echo "▶ 2/4 Worker"
   (cd worker && $WRANGLER deploy)

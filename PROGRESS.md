@@ -2,7 +2,8 @@
 
 > **Aggiorna questo file alla fine di ogni sessione dev**
 > **All'inizio della sessione successiva, leggi QUESTO file prima di qualsiasi altra cosa**
-> **Deploy solo con `npm run deploy`:** carica prima su GitHub (commit + push obbligatori), poi Worker + Pages con l’hash del commit. Mai deploy Cloudflare di codice non presente su GitHub.
+> **Deploy solo con `npm run deploy`:** carica prima su GitHub (commit + push obbligatori, `main` allineato in fast-forward), poi Worker + Pages con l’hash del commit. Mai deploy Cloudflare di codice non presente su GitHub.
+> **2026-09-24:** PR #1 (split view, share, sezioni, Wayback, YouTube-Gemini, deploy GitHub-first) → **merge su `main`** (`972936c`).
 
 ---
 
