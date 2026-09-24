@@ -25,16 +25,11 @@
 git add -A
 git commit -m "feat: brief description (2–5 parole)"
 
-# 2. Push
-git push origin main
-  ↓ (GitHub Actions CI runs)
-
-# 3. Deploy Worker
-wrangler deploy
-
-# 4. Deploy Frontend
-cd frontend && npm run build
-wrangler pages deploy dist/
+# 2+3+4. Push GitHub + Deploy Worker + Deploy Pages (un solo comando)
+npm run deploy
+#  → rifiuta se ci sono modifiche non committate o se il push fallisce
+#  → Pages riceve l'hash del commit: produzione = sempre un commit su GitHub
+#  (SKIP_WORKER=1 npm run deploy per il solo frontend)
 
 # 5. Test produzione
 # Apri https://recipe-book.pages.dev
@@ -47,6 +42,7 @@ git push origin main
 ```
 
 **Non è "done" se:**
+- ❌ Deploy su Cloudflare senza `npm run deploy` (codice in produzione non presente su GitHub)
 - ❌ Committo ma non pusho
 - ❌ Pusho ma non faccio deploy
 - ❌ Faccio deploy ma non testo

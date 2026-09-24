@@ -10,7 +10,8 @@
     "dev": "concurrently \"npm run dev --workspace=frontend\" \"npm run dev --workspace=worker\"",
     "build": "npm run build --workspace=frontend",
     "preview:web": "npm run build --workspace=frontend && npm run preview --workspace=frontend",
-    "install:all": "npm install && npm install --workspace=frontend && npm install --workspace=worker"
+    "install:all": "npm install && npm install --workspace=frontend && npm install --workspace=worker",
+    "deploy": "bash scripts/deploy.sh"
   },
   "devDependencies": {
     "concurrently": "^8.2.0"
