@@ -24,8 +24,11 @@
 | **Foto ricetta (upload)** | «Sessione 12» | ✅ Scatta / carica / URL → Dropbox `/recipes/images` |
 | **Split view desktop** | «Sessione 13» | ✅ Due ricette affiancate (`?split=`) ≥1024px |
 | **Form ricetta desktop** | «Sessione 13» | ✅ Layout largo, sticky Salva, foto + meta, ingredienti/passi a 2 col |
+| **Share ricette tra account** | «Sessione 14» | ✅ Ownership invariata; tab Condivise + tab staff con share-in |
+| **Schermo sempre acceso** | «Sessione 15» | ✅ Wake Lock + toggle Impostazioni (device-local) |
 | **Invite link monouso** | «Sessione 8» + «10» | ✅ Copia messaggio (niente email/Resend) |
-| **Deploy prod** | «Sessione 10» + «12» + «13» | ✅ Cloudflare + repo GitHub |
+| **Deploy prod** | «Sessione 10» + «12»–«15» | ✅ Cloudflare + repo GitHub |
+| **Snippet riusabili** | «Biblioteca codice critico» (fine file) | ✅ Pattern da copiare in altri progetti |
 
 ---
 
@@ -754,5 +757,226 @@ Toggle per tenere lo schermo acceso (utile in cucina).
 | `frontend/src/pages/Settings.jsx` | **Modificato** — sezione Schermo |
 | `PROGRESS.md` | **Modificato** |
 
-**Deploy:** Pages (questa sessione)
+**Deploy:** ✅ Pages production `recipe-book-ap1.pages.dev` (bundle `index-M7EXZFpV.js`) — 2026-09-24
+
+---
+
+## Biblioteca codice critico (riuso in altri progetti)
+
+> Snippet **stabili e battuti in produzione** su Recipe Book. Copia/adatta; non dipendono dal dominio “ricette” se non dove indicato.
+> File sorgente completi restano nel repo — qui solo il cuore.
+
+### 1) API client con JWT + base URL Worker (Vite)
+
+`frontend/src/services/api.js`
+
+```js
+const WORKER_URL = (import.meta.env.VITE_WORKER_URL || '').replace(/\/$/, '')
+
+function apiUrl(path) {
+  if (!path.startsWith('/')) return `${WORKER_URL}/${path}`
+  return `${WORKER_URL}${path}`
+}
+
+export async function apiFetch(path, options = {}) {
+  const { jwt } = useAuthStore.getState() // o il tuo store
+  const headers = {
+    ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+    ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}),
+    ...options.headers
+  }
+  const res = await fetch(apiUrl(path), { ...options, headers })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || data.message || `HTTP ${res.status}`)
+  return data
+}
+```
+
+**Prod build:**  
+`VITE_WORKER_URL=https://….workers.dev VITE_APP_ENV=production npm run build`
+
+**Deploy Pages (Global API Key, non Bearer token):**  
+`CLOUDFLARE_EMAIL=… CLOUDFLARE_API_KEY=… npx wrangler pages deploy dist --project-name=… --branch=main`
+
+---
+
+### 2) RBAC: autore vs staff vs “condiviso con” (ownership invariata)
+
+`worker/src/lib/rbac.js` — pattern generico “risorsa + sharedWithUserIds”
+
+```js
+export function sharedWithUserIds(resource) {
+  const raw = resource?.metadata?.sharedWithUserIds ?? resource?.sharedWithUserIds
+  if (!Array.isArray(raw)) return []
+  return raw.map((id) => String(id || '').trim().replace(/^user-/, '')).filter(Boolean)
+}
+
+export function canViewResource(user, resource) {
+  if (!resource) return false
+  if (isStaff(user)) return true
+  if (isAuthor(user, resource)) return true
+  if (resource?.metadata?.isPrivate || resource?.isPrivate) return false
+  return sharedWithUserIds(resource).includes(String(user.userId))
+}
+
+// Edit/delete: tipicamente SOLO autore o staff (i destinatari del share = sola lettura)
+export function canEditResource(user, resource) {
+  if (!resource) return false
+  if (isStaff(user)) return true
+  return isAuthor(user, resource)
+}
+```
+
+**Regola prodotto:** `assignToUserId` = cambia ownership; `sharedWithUserIds` = solo view. Non mescolarli.
+
+---
+
+### 3) Indice inverso share (liste affidabili anche se l’index è stale)
+
+`worker/src/routes/recipes.js` — file tipo `/…/resource-shares.json`: `{ [userId]: [resourceId, …] }`
+
+```js
+async function syncShareMapForResource(client, resourceId, userIds) {
+  const map = await loadShareMap(client) // {} se manca
+  const id = String(resourceId)
+  const targets = new Set(normalizeIds(userIds))
+
+  for (const [uid, list] of Object.entries(map)) {
+    if (!Array.isArray(list)) { delete map[uid]; continue }
+    const next = list.filter((rid) => rid !== id)
+    if (next.length) map[uid] = next
+    else delete map[uid]
+  }
+  for (const uid of targets) {
+    const list = Array.isArray(map[uid]) ? [...map[uid]] : []
+    if (!list.includes(id)) list.push(id)
+    map[uid] = list
+  }
+  await saveShareMap(client, map)
+  return map
+}
+```
+
+In **GET lista**, unisci `sharedWithUserIds` dall’index **e** dalla share-map prima di filtrare con `canView*`.
+
+Endpoint tipico: `PUT /api/resources/:id/share` body `{ userIds: string[] }` → aggiorna metadata + index + share-map.
+
+---
+
+### 4) UI staff: tab persona = proprie + ricevute in share
+
+`frontend/src/pages/Recipes.jsx` — quando l’admin apre il tab di un altro utente
+
+```js
+function recipesForPerson(allRecipes, personUserId) {
+  const pid = String(personUserId)
+  const out = []
+  const seen = new Set()
+  for (const r of allRecipes || []) {
+    if (!r?.id || seen.has(r.id)) continue
+    const own = isOwnRecipe(r, pid)
+    const sharedIn = isSharedWithViewer(r, pid) // in sharedWithUserIds, non autore
+    if (!own && !sharedIn) continue
+    seen.add(r.id)
+    out.push(r)
+  }
+  // proprie prima, poi ricevute
+  out.sort((a, b) => Number(isOwnRecipe(b, pid)) - Number(isOwnRecipe(a, pid)) /* + titolo */)
+  return out
+}
+```
+
+**Bug tipico evitato:** filtrare solo per `author === persona` → le risorse condivise restano invisibili nel tab altrui (anche se il destinatario le vede nel suo account).
+
+Passa `perspectiveUserId` alla lista per i badge (“Condivisa da X” come li vedrebbe quella persona).
+
+---
+
+### 5) Schermo sempre acceso (Wake Lock) — device-local
+
+**Store** `frontend/src/store/keepAwakeStore.js`:
+
+```js
+import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
+
+export const useKeepAwakeStore = create(
+  persist(
+    (set) => ({
+      enabled: false,
+      setEnabled: (enabled) => set({ enabled: Boolean(enabled) })
+    }),
+    { name: 'app-keep-awake', partialize: (s) => ({ enabled: s.enabled }) }
+  )
+)
+```
+
+**Controller** (montare **una volta** nello shell autenticato):
+
+```js
+useEffect(() => {
+  if (!enabled || !('wakeLock' in navigator)) {
+    lockRef.current?.release().catch(() => {})
+    lockRef.current = null
+    return
+  }
+  let cancelled = false
+  const acquire = async () => {
+    if (cancelled || document.visibilityState !== 'visible') return
+    try {
+      const lock = await navigator.wakeLock.request('screen')
+      if (cancelled) { lock.release().catch(() => {}); return }
+      lockRef.current = lock
+    } catch (e) { console.warn('[keepAwake]', e) }
+  }
+  acquire()
+  const onVis = () => { if (document.visibilityState === 'visible') acquire() }
+  document.addEventListener('visibilitychange', onVis)
+  return () => {
+    cancelled = true
+    document.removeEventListener('visibilitychange', onVis)
+    lockRef.current?.release().catch(() => {})
+    lockRef.current = null
+  }
+}, [enabled])
+```
+
+**Note:** HTTPS obbligatorio; in background il lock si rilascia → ri-acquire su `visibilitychange`; preferenza **non** sincronizzare sul server (ogni device ha la sua).
+
+---
+
+### 6) Form desktop 2 colonne Ingredienti | Passi (Tailwind)
+
+```jsx
+{/* mobile: 1 col · lg+: 2 col */}
+<div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-start">
+  <section>…ingredienti…</section>
+  <section>…passi…</section>
+</div>
+```
+
+Righe ingredienti desktop: **griglia esplicita** (evitare `display:contents` → nomi verticali):
+
+```jsx
+<div className="hidden md:grid grid-cols-[minmax(0,1fr)_5.5rem_6.5rem_2.75rem] gap-2.5 items-center">
+  <input className="input-field min-w-0 !w-full" /* nome */ />
+  <input /* qty */ />
+  <input /* unità */ />
+  <button type="button" /* rimuovi */ />
+</div>
+```
+
+---
+
+### 7) Checklist riuso rapido
+
+| Pattern | Dove | Portabile? |
+|---------|------|------------|
+| `apiFetch` + `VITE_WORKER_URL` | ogni SPA→Worker | sì |
+| RBAC author/staff/share | qualsiasi multi-user vault | sì |
+| Reverse share map | Dropbox/S3/KV JSON | sì |
+| Tab “vista persona” = own+sharedIn | admin dashboard | sì |
+| Wake Lock + zustand persist | PWA cucina / kiosk / lettura | sì |
+| Grid form 2 col + griglia riga | form lunghi desktop | sì |
+| Wrangler Pages con Global API Key | `EMAIL`+`API_KEY`, non `API_TOKEN` Bearer | sì (Cloudflare) |
 
