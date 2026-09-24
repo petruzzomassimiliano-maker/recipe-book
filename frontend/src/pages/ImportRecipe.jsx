@@ -234,6 +234,11 @@ export default function ImportRecipe() {
                   ? 'Estrai da YouTube'
                   : 'Estrai da URL'}
             </button>
+            {urlLoading && youtube && (
+              <p className="text-xs text-stone-500" aria-live="polite">
+                Se il video non ha sottotitoli l’IA lo guarda e lo ascolta: può servire fino a un minuto.
+              </p>
+            )}
           </form>
 
           <div className="card p-5 sm:p-6 mb-8 space-y-3 max-w-3xl">

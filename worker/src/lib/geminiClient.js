@@ -193,13 +193,14 @@ async function withKeyFallback(envOrKey, run) {
 export async function geminiGenerateContent(
   envOrKey,
   parts,
-  { temperature = 0.1, json = true, systemInstruction = null } = {}
+  { temperature = 0.1, json = true, systemInstruction = null, generationConfig = null } = {}
 ) {
   const body = {
     contents: [{ role: 'user', parts }],
     generationConfig: {
       temperature,
-      ...(json ? { responseMimeType: 'application/json' } : {})
+      ...(json ? { responseMimeType: 'application/json' } : {}),
+      ...(generationConfig || {})
     }
   }
   if (systemInstruction) {

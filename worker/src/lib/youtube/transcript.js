@@ -52,10 +52,11 @@ function decodeXmlEntities(text) {
 
 function parseTranscriptXml(xml) {
   const chunks = []
-  const re = /<text[^>]*>([\s\S]*?)<\/text>/gi
+  // format 1: <text …>…</text> · format 3 (Android/innertube): <p t d><s>…</s></p>
+  const re = /<(text|p)\b[^>]*>([\s\S]*?)<\/\1>/gi
   let m
   while ((m = re.exec(xml))) {
-    const line = decodeXmlEntities(m[1]).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+    const line = decodeXmlEntities(m[2].replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim()
     if (line) chunks.push(line)
   }
   return chunks.join(' ').replace(/\s+/g, ' ').trim()
@@ -89,75 +90,170 @@ function pickCaptionTrack(tracks) {
   return scored[0]?.t || null
 }
 
-async function fetchCaptionText(baseUrl) {
+async function fetchCaptionText(baseUrl, userAgent = UA) {
   // Prefer json3; fall back to XML
-  const jsonUrl = baseUrl.includes('fmt=') ? baseUrl : `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}fmt=json3`
+  const base = String(baseUrl).replace(/([?&])fmt=[^&]*&?/, '$1').replace(/[?&]$/, '')
+  const jsonUrl = `${base}${base.includes('?') ? '&' : '?'}fmt=json3`
   try {
-    const res = await fetch(jsonUrl, { headers: { 'User-Agent': UA } })
+    const res = await fetch(jsonUrl, { headers: { 'User-Agent': userAgent } })
     if (res.ok) {
-      const data = await res.json()
-      const text = parseTranscriptJson3(data)
-      if (text.length > 40) return text
+      const raw = await res.text()
+      if (raw.trim()) {
+        const text = parseTranscriptJson3(JSON.parse(raw))
+        if (text.length > 40) return text
+      }
     }
   } catch {
     // continue
   }
 
-  const res = await fetch(baseUrl, { headers: { 'User-Agent': UA } })
-  if (!res.ok) return ''
-  const xml = await res.text()
-  return parseTranscriptXml(xml)
+  try {
+    const res = await fetch(base, { headers: { 'User-Agent': userAgent } })
+    if (!res.ok) return ''
+    return parseTranscriptXml(await res.text())
+  } catch {
+    return ''
+  }
+}
+
+// Web caption URLs now need a PO token and return an empty body server-side.
+// The Android client still gets directly downloadable caption tracks.
+const ANDROID_CLIENT_VERSION = '20.10.38'
+const ANDROID_UA = `com.google.android.youtube/${ANDROID_CLIENT_VERSION} (Linux; U; Android 11) gzip`
+
+async function fetchAndroidPlayer(videoId) {
+  try {
+    const res = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'User-Agent': ANDROID_UA },
+      body: JSON.stringify({
+        context: {
+          client: {
+            clientName: 'ANDROID',
+            clientVersion: ANDROID_CLIENT_VERSION,
+            androidSdkVersion: 30,
+            hl: 'it',
+            gl: 'IT'
+          }
+        },
+        videoId
+      })
+    })
+    if (!res.ok) return null
+    return await res.json().catch(() => null)
+  } catch {
+    return null
+  }
+}
+
+async function fetchWatchPagePlayer(watchUrl) {
+  try {
+    const res = await fetch(`${watchUrl}&hl=it&gl=IT`, {
+      headers: {
+        'User-Agent': UA,
+        'Accept-Language': 'it-IT,it;q=0.9,en;q=0.8',
+        Accept: 'text/html'
+      }
+    })
+    if (!res.ok) return { player: null, status: res.status }
+    const html = await res.text()
+    const player =
+      extractJsonObject(html, 'ytInitialPlayerResponse') ||
+      extractJsonObject(html, 'var ytInitialPlayerResponse =')
+    return { player, status: res.status }
+  } catch {
+    return { player: null, status: 0 }
+  }
+}
+
+/** Public oEmbed: title + channel even when the player is behind a bot check. */
+async function fetchOembed(watchUrl) {
+  try {
+    const res = await fetch(
+      `https://www.youtube.com/oembed?url=${encodeURIComponent(watchUrl)}&format=json`,
+      { headers: { 'User-Agent': UA } }
+    )
+    if (!res.ok) return { ok: false, status: res.status }
+    const data = await res.json().catch(() => null)
+    return data ? { ok: true, title: data.title, channel: data.author_name } : { ok: false, status: res.status }
+  } catch {
+    return { ok: false, status: 0 }
+  }
+}
+
+function captionTracksOf(player) {
+  return player?.captions?.playerCaptionsTracklistRenderer?.captionTracks || []
 }
 
 /**
  * Fetch title, description, thumbnail hints + auto captions when available.
+ * Captions: watch page tracks → Android client tracks.
  */
 export async function fetchYoutubeVideoContext(videoId) {
   const watchUrl = youtubeWatchUrl(videoId)
-  const res = await fetch(`${watchUrl}&hl=it&gl=IT`, {
-    headers: {
-      'User-Agent': UA,
-      'Accept-Language': 'it-IT,it;q=0.9,en;q=0.8',
-      Accept: 'text/html'
-    }
-  })
-  if (!res.ok) {
-    const err = new Error(`YouTube non raggiungibile (${res.status})`)
-    err.status = 502
-    throw err
-  }
-
-  const html = await res.text()
-  const player =
-    extractJsonObject(html, 'ytInitialPlayerResponse') ||
-    extractJsonObject(html, 'var ytInitialPlayerResponse =')
-
-  const details = player?.videoDetails || {}
-  const title = String(details.title || '').trim()
-  const description = String(details.shortDescription || '').trim()
-  const channel = String(details.author || '').trim()
-  const lengthSeconds = Number(details.lengthSeconds) || 0
-
-  const tracks =
-    player?.captions?.playerCaptionsTracklistRenderer?.captionTracks || []
-  const track = pickCaptionTrack(tracks)
+  const web = await fetchWatchPagePlayer(watchUrl)
+  let android = null
 
   let transcript = ''
   let transcriptLang = null
-  if (track?.baseUrl) {
-    transcript = await fetchCaptionText(track.baseUrl)
-    transcriptLang = track.languageCode || null
+  let transcriptSource = 'none'
+
+  const webTrack = pickCaptionTrack(captionTracksOf(web.player))
+  if (webTrack?.baseUrl) {
+    transcript = await fetchCaptionText(webTrack.baseUrl)
+    if (transcript) {
+      transcriptLang = webTrack.languageCode || null
+      transcriptSource = 'captions'
+    }
   }
+
+  if (!transcript || !web.player?.videoDetails) {
+    android = await fetchAndroidPlayer(videoId)
+  }
+
+  if (!transcript) {
+    const androidTrack = pickCaptionTrack(captionTracksOf(android))
+    if (androidTrack?.baseUrl) {
+      transcript = await fetchCaptionText(androidTrack.baseUrl, ANDROID_UA)
+      if (transcript) {
+        transcriptLang = androidTrack.languageCode || null
+        transcriptSource = 'captions-android'
+      }
+    }
+  }
+
+  let details = web.player?.videoDetails || android?.videoDetails || null
+  if (!details) {
+    const oembed = await fetchOembed(watchUrl)
+    if (!oembed.ok) {
+      const err = new Error(
+        oembed.status === 401 || oembed.status === 403 || oembed.status === 404
+          ? 'Video YouTube privato, rimosso o non incorporabile'
+          : `YouTube non raggiungibile (${web.status || oembed.status || 'rete'})`
+      )
+      err.status = oembed.status === 404 ? 404 : 502
+      err.code = oembed.status === 404 || oembed.status === 401 ? 'YOUTUBE_VIDEO_UNAVAILABLE' : undefined
+      throw err
+    }
+    details = { title: oembed.title, author: oembed.channel, shortDescription: '', lengthSeconds: 0 }
+  }
+
+  // "Confirm you're not a bot" is also LOGIN_REQUIRED: only a real private video counts.
+  const reasons = [web.player?.playabilityStatus?.reason, android?.playabilityStatus?.reason]
+    .filter(Boolean)
+    .join(' ')
 
   return {
     videoId,
     watchUrl,
-    title,
-    description,
-    channel,
-    lengthSeconds,
+    title: String(details.title || '').trim(),
+    description: String(details.shortDescription || '').trim(),
+    channel: String(details.author || '').trim(),
+    lengthSeconds: Number(details.lengthSeconds) || 0,
+    isPrivate: Boolean(details.isPrivate) || /\bprivat[oe]\b|\bprivate video\b/i.test(reasons),
     transcript,
     transcriptLang,
+    transcriptSource,
     hasCaptions: Boolean(transcript),
     thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
   }
