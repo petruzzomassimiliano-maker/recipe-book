@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../hooks/useAuth.js'
 import { useAuthStore } from '../store/authStore.js'
+import { useKeepAwakeStore } from '../store/keepAwakeStore.js'
+import { isWakeLockSupported } from '../components/common/KeepAwakeController.jsx'
 import { changePassword as changePasswordApi } from '../services/auth.js'
 import {
   getFamilySettings,
@@ -44,6 +46,10 @@ export default function Settings() {
   const [recovery, setRecovery] = useState({ phrase: '', current: '', confirm: '' })
   const [recoveryBusy, setRecoveryBusy] = useState(false)
   const [resetResult, setResetResult] = useState(null)
+
+  const keepAwake = useKeepAwakeStore((s) => s.enabled)
+  const setKeepAwake = useKeepAwakeStore((s) => s.setEnabled)
+  const wakeLockOk = isWakeLockSupported()
 
   const reload = async () => {
     const me = await getMe()
@@ -296,6 +302,7 @@ export default function Settings() {
         <div className="flex gap-2 overflow-x-auto scrollbar-none">
           {[
             { href: '#profilo', label: 'Profilo' },
+            { href: '#schermo', label: 'Schermo' },
             { href: '#password', label: 'Password' },
             { href: '#recupero', label: 'Recupero' },
             ...(isStaff
@@ -356,6 +363,57 @@ export default function Settings() {
             Salva preferenze
           </button>
         </form>
+      </section>
+
+      <section id="schermo" className="card p-4 sm:p-6 space-y-3 scroll-mt-28 sm:scroll-mt-24">
+        <h2 className="section-title">Schermo</h2>
+        <p className="text-sm text-stone-500 leading-relaxed">
+          Utile mentre cucini: evita che il telefono si spegne da solo. Vale solo su questo
+          dispositivo.
+        </p>
+        <label
+          className={`flex items-center justify-between gap-4 min-h-[52px] rounded-xl border px-3.5 py-2.5 ${
+            wakeLockOk
+              ? 'border-stone-200 bg-stone-50/80 cursor-pointer'
+              : 'border-stone-100 bg-stone-50/50 opacity-70'
+          }`}
+        >
+          <span className="min-w-0">
+            <span className="block text-sm font-medium text-stone-800">Tieni lo schermo acceso</span>
+            <span className="block text-xs text-stone-500 mt-0.5">
+              {wakeLockOk
+                ? keepAwake
+                  ? 'Attivo finché l’app è in primo piano'
+                  : 'Disattivo'
+                : 'Non supportato da questo browser'}
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            className="sr-only peer"
+            checked={keepAwake}
+            disabled={!wakeLockOk}
+            onChange={(e) => setKeepAwake(e.target.checked)}
+            aria-label="Tieni lo schermo acceso"
+          />
+          <span
+            aria-hidden
+            className={`relative shrink-0 w-11 h-7 rounded-full transition-colors ${
+              keepAwake && wakeLockOk ? 'bg-primary' : 'bg-stone-300'
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 w-6 h-6 rounded-full bg-white shadow transition-transform ${
+                keepAwake && wakeLockOk ? 'translate-x-4' : 'translate-x-0'
+              }`}
+            />
+          </span>
+        </label>
+        {wakeLockOk && keepAwake && (
+          <p className="text-xs text-stone-400 leading-relaxed">
+            Se metti l’app in background lo schermo può spegnersi; tornando qui si riattiva da solo.
+          </p>
+        )}
       </section>
 
       <section id="password" className="card p-4 sm:p-6 space-y-4 scroll-mt-28 sm:scroll-mt-24">

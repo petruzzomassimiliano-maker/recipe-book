@@ -732,3 +732,27 @@ Condividere una ricetta da un account a un altro: resta del proprietario, ma l�
 
 **Deploy:** ✅ Worker + Pages production `recipe-book-ap1.pages.dev` — 2026-09-18
 
+---
+
+## Sessione 15 — 2026-09-24 — Schermo sempre acceso
+
+### Segnalazione
+Toggle per tenere lo schermo acceso (utile in cucina).
+
+### Soluzione (minimale, senza backend)
+- Preferenza **solo dispositivo** (`localStorage` via zustand persist) — non va su Dropbox
+- Screen Wake Lock API; controller montato in `AuthGuard` (solo da loggati)
+- Toggle in **Impostazioni → Schermo**; se il browser non supporta, disabilitato con messaggio
+- Ri-acquisizione automatica quando l’app torna in primo piano
+
+### File
+| File | Azione |
+|------|--------|
+| `frontend/src/store/keepAwakeStore.js` | **Nuovo** |
+| `frontend/src/components/common/KeepAwakeController.jsx` | **Nuovo** |
+| `frontend/src/components/auth/AuthGuard.jsx` | **Modificato** — monta controller |
+| `frontend/src/pages/Settings.jsx` | **Modificato** — sezione Schermo |
+| `PROGRESS.md` | **Modificato** |
+
+**Deploy:** Pages (questa sessione)
+

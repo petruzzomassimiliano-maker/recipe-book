@@ -4,6 +4,7 @@ import Navbar from '../common/Navbar.jsx'
 import MobileTabBar from '../common/MobileTabBar.jsx'
 import OfflineBanner from '../common/OfflineBanner.jsx'
 import InstallPrompt from '../common/InstallPrompt.jsx'
+import KeepAwakeController from '../common/KeepAwakeController.jsx'
 import { useRecipeStore } from '../../store/recipeStore.js'
 
 export default function AuthGuard() {
@@ -16,6 +17,7 @@ export default function AuthGuard() {
 
   return (
     <div className="min-h-dvh bg-surface flex flex-col">
+      <KeepAwakeController />
       <Navbar />
       <OfflineBanner usingCache={offlineFallback} />
       <div className="flex-1 pb-[calc(3.75rem+env(safe-area-inset-bottom))] sm:pb-0">
