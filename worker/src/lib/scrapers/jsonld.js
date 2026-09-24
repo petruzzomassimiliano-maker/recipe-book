@@ -3,11 +3,10 @@ import {
   emptyDraft,
   firstImage,
   parseDurationMinutes,
-  parseIngredientLine,
   resolveRecipeYield,
-  cleanInstructionText,
   stripTags
 } from './_base.js'
+import { ingredientsFromJsonLd, stepsFromJsonLd } from './sections.js'
 
 function findRecipeNodes(node, out = []) {
   if (!node || typeof node !== 'object') return out
@@ -45,27 +44,6 @@ function extractJsonLdBlocks(html) {
   return blocks
 }
 
-function howToSteps(recipe) {
-  const instructions = recipe.recipeInstructions
-  if (!instructions) return []
-  if (typeof instructions === 'string') {
-    return instructions
-      .split(/\n+|(?<=\.)\s+/)
-      .map((s) => cleanInstructionText(s))
-      .filter(Boolean)
-      .map((instruction) => ({ instruction }))
-  }
-  return asArray(instructions).flatMap((item) => {
-    if (typeof item === 'string') return [{ instruction: cleanInstructionText(item) }]
-    if (item?.['@type'] === 'HowToSection') {
-      return asArray(item.itemListElement).map((step) => ({
-        instruction: cleanInstructionText(step.text || step.name || '')
-      }))
-    }
-    return [{ instruction: cleanInstructionText(item.text || item.name || '') }]
-  }).filter((s) => s.instruction)
-}
-
 /**
  * Parse schema.org Recipe from page HTML (JSON-LD).
  * Works for AllRecipes, BBC, many Giallozafferano pages, etc.
@@ -95,10 +73,8 @@ export function parseJsonLdRecipe(html, sourceUrl) {
       draft.notes = draft.notes ? `${draft.notes}\n\n${resa}` : resa
     }
   }
-  draft.ingredients = asArray(recipe.recipeIngredient)
-    .map(parseIngredientLine)
-    .filter(Boolean)
-  draft.steps = howToSteps(recipe)
+  draft.ingredients = ingredientsFromJsonLd(recipe.recipeIngredient)
+  draft.steps = stepsFromJsonLd(recipe.recipeInstructions)
 
   if (!draft.title || (!draft.ingredients.length && !draft.steps.length)) return null
   return draft

@@ -1,6 +1,7 @@
 import { geminiGenerateContent, parseGeminiJson } from '../geminiClient.js'
 import { emptyDraft, refineIngredientFields, stripTags } from './_base.js'
 import { STEPS_READABILITY_RULES, improveStepsReadability } from './readableSteps.js'
+import { withSection } from './sections.js'
 
 function normalizeAiUnit(unit) {
   const u = String(unit || '').trim().toLowerCase().replace(/\.$/, '')
@@ -19,10 +20,14 @@ export const RECIPE_JSON_SCHEMA_HINT = `{
   "difficulty": "easy"|"medium"|"hard",
   "cuisine": "string",
   "notes": "string (se la pagina dice resa in g/ml es. 850 grammi, mettila qui come Resa: 850 g)",
-  "ingredients": [{ "name": "string", "quantity": number|string|null, "unit": "string", "notes": "string" }],
-  "steps": [{ "instruction": "string" }],
+  "ingredients": [{ "name": "string", "quantity": number|string|null, "unit": "string", "notes": "string", "section": "string (opzionale)" }],
+  "steps": [{ "instruction": "string", "section": "string (opzionale)" }],
   "imageUrl": "string|null"
-}`
+}
+Sezioni (componenti): se la ricetta originale divide ingredienti e/o procedimento per componente
+(es. "Pan di Spagna", "Crema al burro al cioccolato", "Bagna", "Assemblaggio"), metti quel nome in
+"section" su ogni ingrediente/passo del gruppo, nello stesso ordine della pagina. Se la ricetta NON
+è divisa, ometti "section". Non inventare sezioni.`
 
 /**
  * Pull a compact, recipe-relevant text blob from HTML for Gemini.
@@ -80,15 +85,15 @@ export function normalizeAiDraft(parsed, sourceUrl, sourceProvider = 'gemini') {
         quantity = 'q.b.'
         unit = ''
       }
-      return { name, quantity, unit, notes }
+      return withSection({ name, quantity, unit, notes }, ing?.section)
     })
     .filter((ing) => ing?.name)
 
   draft.steps = improveStepsReadability(
     (Array.isArray(parsed.steps) ? parsed.steps : [])
-      .map((s) => ({
-        instruction: String(s?.instruction || s?.text || '').trim()
-      }))
+      .map((s) =>
+        withSection({ instruction: String(s?.instruction || s?.text || '').trim() }, s?.section)
+      )
       .filter((s) => s.instruction)
   )
 
@@ -198,6 +203,10 @@ ${STEPS_READABILITY_RULES}`
  * Rewrite only the steps for kitchen readability (used after HTML scrape too).
  */
 export async function polishStepsWithGemini(apiKey, steps) {
+  // AI rewrite returns a flat list and would drop component sections.
+  if ((steps || []).some((s) => String(s?.section || '').trim())) {
+    return improveStepsReadability(steps)
+  }
   const input = (steps || [])
     .map((s) => String(s?.instruction || '').trim())
     .filter(Boolean)

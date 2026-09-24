@@ -16,6 +16,102 @@ import { parseRecipeFromYoutube } from '../youtube/parseRecipe.js'
 const USER_AGENT =
   'Mozilla/5.0 (compatible; RecipeBookBot/0.1; +https://recipe-book.pages.dev)'
 
+const BOT_HEADERS = {
+  'User-Agent': USER_AGENT,
+  Accept: 'text/html,application/xhtml+xml',
+  'Accept-Language': 'it-IT,it;q=0.9,en;q=0.8'
+}
+
+// Many recipe CDNs (Akamai, Incapsula) reject obvious bot user agents.
+const BROWSER_HEADERS = {
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+  'Accept-Language': 'it-IT,it;q=0.9,en;q=0.8',
+  'Sec-Fetch-Dest': 'document',
+  'Sec-Fetch-Mode': 'navigate',
+  'Sec-Fetch-Site': 'none',
+  'Sec-Fetch-User': '?1',
+  'Upgrade-Insecure-Requests': '1'
+}
+
+const BLOCK_PAGE_RE =
+  /(access denied|temporarily unavailable|attention required|are you a robot|captcha|request unsuccessful|incapsula incident|bot detection)/i
+
+/** Bot-wall pages sometimes answer 200; treat them as a failed download. */
+function looksBlockedHtml(html) {
+  if (!html) return true
+  if (/application\/ld\+json/i.test(html)) return false
+  return html.length < 80000 && BLOCK_PAGE_RE.test(html)
+}
+
+async function tryFetchHtml(url, headers) {
+  try {
+    const res = await fetch(url, { headers, redirect: 'follow' })
+    if (!res.ok) return { ok: false, status: res.status }
+    const html = await res.text()
+    if (looksBlockedHtml(html)) return { ok: false, status: res.status, blocked: true }
+    return { ok: true, html }
+  } catch (err) {
+    return { ok: false, status: 0, error: err.message }
+  }
+}
+
+/** Raw archived HTML (`id_` = no Wayback toolbar) for sites that block datacenter IPs. */
+async function fetchFromWayback(url) {
+  try {
+    const availRes = await fetch(
+      `https://archive.org/wayback/available?url=${encodeURIComponent(url)}`,
+      { headers: BOT_HEADERS }
+    )
+    if (!availRes.ok) return null
+    const data = await availRes.json().catch(() => null)
+    const snap = data?.archived_snapshots?.closest
+    if (!snap?.available || !snap.timestamp || String(snap.status) !== '200') return null
+
+    const res = await fetch(`https://web.archive.org/web/${snap.timestamp}id_/${url}`, {
+      headers: BOT_HEADERS,
+      redirect: 'follow'
+    })
+    if (!res.ok) return null
+    const html = await res.text()
+    if (looksBlockedHtml(html)) return null
+    return { html, timestamp: String(snap.timestamp) }
+  } catch (err) {
+    console.warn('[scraper] wayback failed:', err.message)
+    return null
+  }
+}
+
+function formatWaybackDate(timestamp) {
+  const m = String(timestamp || '').match(/^(\d{4})(\d{2})(\d{2})/)
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : ''
+}
+
+/**
+ * Download page HTML: browser-like headers → legacy bot UA → Wayback archive.
+ * @returns {Promise<{ html: string, via: 'direct'|'wayback', archivedAt?: string }>}
+ */
+async function downloadRecipeHtml(url) {
+  const direct = await tryFetchHtml(url, BROWSER_HEADERS)
+  if (direct.ok) return { html: direct.html, via: 'direct' }
+
+  const legacy = await tryFetchHtml(url, BOT_HEADERS)
+  if (legacy.ok) return { html: legacy.html, via: 'direct' }
+
+  const archived = await fetchFromWayback(url)
+  if (archived) return { html: archived.html, via: 'wayback', archivedAt: archived.timestamp }
+
+  const status = direct.status || legacy.status
+  throw Object.assign(
+    new Error(
+      `Il sito blocca il download automatico${status ? ` (${status})` : ''} e non esiste una copia archiviata. ` +
+        'Prova «Oppure da foto» con uno screenshot della ricetta, oppure inseriscila a mano.'
+    ),
+    { status: 502 }
+  )
+}
+
 function detectProvider(url) {
   const host = new URL(url).hostname.replace(/^www\./, '')
   if (host.includes('allrecipes')) return 'allrecipes'
@@ -86,22 +182,14 @@ export async function fetchRecipeFromUrl(url, { geminiEnv, geminiApiKey } = {}) 
     return parseRecipeFromYoutube(gemini, { videoUrl: sourceUrl })
   }
 
-  const res = await fetch(sourceUrl, {
-    headers: {
-      'User-Agent': USER_AGENT,
-      Accept: 'text/html,application/xhtml+xml',
-      'Accept-Language': 'it-IT,it;q=0.9,en;q=0.8'
-    },
-    redirect: 'follow'
-  })
-
-  if (!res.ok) {
-    throw Object.assign(new Error(`Impossibile scaricare la pagina (${res.status})`), {
-      status: 502
-    })
-  }
-
-  const html = await res.text()
+  const download = await downloadRecipeHtml(sourceUrl)
+  const html = download.html
+  const archiveNote =
+    download.via === 'wayback'
+      ? `Il sito blocca i download automatici: ricetta letta dalla copia archiviata${
+          formatWaybackDate(download.archivedAt) ? ` del ${formatWaybackDate(download.archivedAt)}` : ''
+        } (Wayback Machine). Controlla che sia aggiornata.`
+      : null
   const provider = detectProvider(sourceUrl)
   const attempts = []
 
@@ -118,6 +206,10 @@ export async function fetchRecipeFromUrl(url, { geminiEnv, geminiApiKey } = {}) 
     await polishDraftSteps(draft, hasGemini ? gemini : null, { allowGemini: method === 'html' })
     const out = finalizeDraft(draft, { sourceUrl, provider, method, quality })
     Object.assign(out, extras)
+    if (archiveNote) {
+      out.fetchedVia = 'wayback'
+      out.extractWarning = [archiveNote, out.extractWarning].filter(Boolean).join(' ')
+    }
     return out
   }
 

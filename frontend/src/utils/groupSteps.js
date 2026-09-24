@@ -16,6 +16,10 @@ function stripBullet(text) {
   return clean(text).replace(BULLET_LINE, '').trim()
 }
 
+function sectionOf(step) {
+  return String(step?.section || '').trim()
+}
+
 function isListFragment(text) {
   const t = clean(text)
   if (!t) return false
@@ -32,6 +36,7 @@ function endsWithListIntro(text) {
 
 /**
  * Group orphan list items into the previous "Intro:" step for display.
+ * Never merges across different sections.
  */
 export function groupStepsForDisplay(steps) {
   const out = []
@@ -40,7 +45,12 @@ export function groupStepsForDisplay(steps) {
     if (!text) continue
 
     const prev = out[out.length - 1]
-    if (prev && isListFragment(text) && (endsWithListIntro(prev.instruction) || isListFragment(prev.instruction))) {
+    if (
+      prev &&
+      sectionOf(prev) === sectionOf(step) &&
+      isListFragment(text) &&
+      (endsWithListIntro(prev.instruction) || isListFragment(prev.instruction))
+    ) {
       const item = stripBullet(text)
       const base = String(prev.instruction).replace(/\s*$/, '')
       const intro = endsWithListIntro(base) ? base : `${base}:`

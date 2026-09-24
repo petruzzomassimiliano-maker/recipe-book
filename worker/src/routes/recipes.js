@@ -216,6 +216,12 @@ function parseTags(input) {
   return []
 }
 
+/** Optional recipe component (e.g. "Pan di Spagna"); omitted when empty. */
+function sectionField(item) {
+  const section = String(item?.section || '').replace(/\s+/g, ' ').trim().slice(0, 80)
+  return section ? { section } : {}
+}
+
 function normalizeRecipe(input, { id, author, createdAt }) {
   const now = new Date().toISOString()
   const servings = Number(input.servings ?? input.metadata?.servings) || 1
@@ -227,14 +233,16 @@ function normalizeRecipe(input, { id, author, createdAt }) {
       quantity: coerceQuantity(i.quantity),
       unit: (i.unit || '').trim(),
       notes: i.notes || '',
-      nutritionId: i.nutritionId || null
+      nutritionId: i.nutritionId || null,
+      ...sectionField(i)
     }))
   const steps = (input.steps || [])
     .filter((s) => s?.instruction?.trim())
     .map((s, idx) => ({
       id: s.id || `step-${idx + 1}`,
       order: idx + 1,
-      instruction: s.instruction.trim()
+      instruction: s.instruction.trim(),
+      ...sectionField(s)
     }))
 
   return {

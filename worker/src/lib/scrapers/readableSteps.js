@@ -114,18 +114,34 @@ function endsWithListIntro(text) {
   return /:\s*$/.test(t) || /:\n/.test(t)
 }
 
+function sectionOf(step) {
+  return String(step?.section || '').trim()
+}
+
+/** Keep `section` only when present, so unsectioned steps keep their old shape. */
+function stepWithSection(instruction, section) {
+  return section ? { instruction, section } : { instruction }
+}
+
 /**
  * Merge orphan bullets / short list items into the preceding "Intro:" step.
  * Fixes: step4 "Setacciate a parte:" + step5 "farina" + step6 "lievito" → one step.
+ * Never merges across different sections.
  */
 export function mergeListFragments(steps) {
   const out = []
   for (const step of steps || []) {
     const text = cleanStepText(step?.instruction || step?.text || '')
     if (!text) continue
+    const section = sectionOf(step)
 
     const prev = out[out.length - 1]
-    if (prev && isListFragment(text) && (endsWithListIntro(prev.instruction) || isListFragment(prev.instruction))) {
+    if (
+      prev &&
+      sectionOf(prev) === section &&
+      isListFragment(text) &&
+      (endsWithListIntro(prev.instruction) || isListFragment(prev.instruction))
+    ) {
       const item = stripBullet(text)
       const prevText = prev.instruction
       // Ensure previous ends with colon line, then bullet
@@ -138,7 +154,7 @@ export function mergeListFragments(steps) {
       continue
     }
 
-    out.push({ instruction: text })
+    out.push(stepWithSection(text, section))
   }
   return out
 }
@@ -152,10 +168,11 @@ export function improveStepsReadability(steps) {
   for (const step of steps || []) {
     let text = cleanStepText(step?.instruction || step?.text || '')
     if (!text) continue
+    const section = sectionOf(step)
 
     // Already a multi-line bullet block — keep as one step
     if (text.includes('\n') && BULLET_LINE.test(text)) {
-      out.push({ instruction: text })
+      out.push(stepWithSection(text, section))
       continue
     }
 
@@ -164,7 +181,7 @@ export function improveStepsReadability(steps) {
 
     for (const piece of pieces) {
       const formatted = maybeBulletize(cleanStepText(piece))
-      if (formatted) out.push({ instruction: formatted })
+      if (formatted) out.push(stepWithSection(formatted, section))
     }
   }
 

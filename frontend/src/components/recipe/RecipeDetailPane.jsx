@@ -13,6 +13,10 @@ import { analyzeCookingMethods } from '../../services/gemini.js'
 import { calculateRecipeNutrition, saveManualNutrition, upsertCustomFood } from '../../services/nutrition.js'
 import { formatScaledQty, scaleIngredients } from '../../utils/scaleIngredients.js'
 import { groupStepsForDisplay } from '../../utils/groupSteps.js'
+import { groupBySection } from '../../utils/recipeSections.js'
+
+const SECTION_HEADING_CLASS =
+  'text-[13px] font-semibold uppercase tracking-wide text-primary/90 pb-1.5 mb-1 border-b border-primary/15'
 
 const difficultyLabel = {
   easy: 'Facile',
@@ -580,8 +584,12 @@ export default function RecipeDetailPane({
           )}
 
           {scaledIngredients.length ? (
+            <div className="space-y-5">
+            {groupBySection(scaledIngredients).map((group) => (
+            <div key={`ing-group-${group.startIndex}`}>
+            {group.section ? <h3 className={SECTION_HEADING_CLASS}>{group.section}</h3> : null}
             <ul>
-              {scaledIngredients.map((ing) => {
+              {group.entries.map(({ item: ing }) => {
                 const qty = formatScaledQty(ing.quantity, ing.unit)
                 const done = checkedIng.has(ing.id)
                 return (
@@ -634,6 +642,9 @@ export default function RecipeDetailPane({
                 )
               })}
             </ul>
+            </div>
+            ))}
+            </div>
           ) : (
             <p className="text-stone-400 text-sm">Nessun ingrediente</p>
           )}
@@ -647,18 +658,27 @@ export default function RecipeDetailPane({
         >
           <h2 className="text-lg font-semibold text-stone-900 mb-4">Preparazione</h2>
           {displaySteps.length ? (
-            <ol className="space-y-5">
-              {displaySteps.map((step) => (
-                <li key={step.id || step.order} className="flex gap-3.5">
-                  <span className="shrink-0 w-9 h-9 rounded-full bg-primary/10 text-primary text-sm font-semibold flex items-center justify-center">
-                    {step.order}
-                  </span>
-                  <div className="pt-1 min-w-0 flex-1 text-[16px] sm:text-[15px] leading-relaxed">
-                    <StepInstruction text={step.instruction} />
-                  </div>
-                </li>
+            <div className="space-y-7">
+              {groupBySection(displaySteps).map((group) => (
+                <div key={`step-group-${group.startIndex}`}>
+                  {group.section ? (
+                    <h3 className={`${SECTION_HEADING_CLASS} mb-4`}>{group.section}</h3>
+                  ) : null}
+                  <ol className="space-y-5">
+                    {group.entries.map(({ item: step }) => (
+                      <li key={step.id || step.order} className="flex gap-3.5">
+                        <span className="shrink-0 w-9 h-9 rounded-full bg-primary/10 text-primary text-sm font-semibold flex items-center justify-center">
+                          {step.order}
+                        </span>
+                        <div className="pt-1 min-w-0 flex-1 text-[16px] sm:text-[15px] leading-relaxed">
+                          <StepInstruction text={step.instruction} />
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
               ))}
-            </ol>
+            </div>
           ) : (
             <p className="text-stone-400 text-sm">Nessun passo</p>
           )}

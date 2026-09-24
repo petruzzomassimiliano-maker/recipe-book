@@ -1,11 +1,51 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '../../hooks/useAuth.js'
 import { useSessionDraft } from '../../hooks/useSessionDraft.js'
 import { listUsers } from '../../services/users.js'
 import { readAndCompressImage, uploadRecipeImage } from '../../services/media.js'
+import {
+  hasSections,
+  insertIntoRun,
+  isRunStart,
+  nextSectionName,
+  renameRun,
+  sectionOf
+} from '../../utils/recipeSections.js'
 
-const emptyIngredient = () => ({ name: '', quantity: '', unit: 'g', notes: '' })
-const emptyStep = () => ({ instruction: '' })
+const withOptionalSection = (item, section) => (section ? { ...item, section } : item)
+const emptyIngredient = (section = '') =>
+  withOptionalSection({ name: '', quantity: '', unit: 'g', notes: '' }, section)
+const emptyStep = (section = '') => withOptionalSection({ instruction: '' }, section)
+
+function SectionRunHeader({ value, placeholder, addLabel, onRename, onAdd, onClear }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 pt-3 first:pt-0">
+      <input
+        className="input-field flex-1 min-w-[10rem] !min-h-[40px] !py-1.5 font-semibold text-stone-800"
+        value={value}
+        onChange={(e) => onRename(e.target.value)}
+        placeholder={placeholder}
+        aria-label="Nome sezione"
+      />
+      <button
+        type="button"
+        className="inline-flex items-center min-h-[40px] px-2 text-sm text-primary font-semibold"
+        onClick={onAdd}
+      >
+        {addLabel}
+      </button>
+      {value ? (
+        <button
+          type="button"
+          className="inline-flex items-center min-h-[40px] px-2 text-xs text-stone-400 hover:text-stone-600"
+          onClick={onClear}
+        >
+          Togli titolo
+        </button>
+      ) : null}
+    </div>
+  )
+}
 
 function authorUserIdFromRecipe(recipe) {
   const author = recipe?.author
@@ -68,15 +108,20 @@ function fromRecipe(recipe, defaultAssignToUserId) {
     imageUrl: recipe.imageUrl || '',
     assignToUserId: authorUserIdFromRecipe(recipe) || defaultAssignToUserId || '',
     ingredients: recipe.ingredients?.length
-      ? recipe.ingredients.map((i) => ({
-          name: i.name || '',
-          quantity: i.quantity ?? '',
-          unit: i.unit || '',
-          notes: i.notes || ''
-        }))
+      ? recipe.ingredients.map((i) =>
+          withOptionalSection(
+            {
+              name: i.name || '',
+              quantity: i.quantity ?? '',
+              unit: i.unit || '',
+              notes: i.notes || ''
+            },
+            sectionOf(i)
+          )
+        )
       : [emptyIngredient()],
     steps: recipe.steps?.length
-      ? recipe.steps.map((s) => ({ instruction: s.instruction || '' }))
+      ? recipe.steps.map((s) => withOptionalSection({ instruction: s.instruction || '' }, sectionOf(s)))
       : [emptyStep()]
   }
 }
@@ -220,9 +265,14 @@ export default function RecipeForm({
   const setStep = (idx, instruction) => {
     setForm((prev) => ({
       ...prev,
-      steps: prev.steps.map((row, i) => (i === idx ? { instruction } : row))
+      steps: prev.steps.map((row, i) => (i === idx ? { ...row, instruction } : row))
     }))
   }
+
+  const ingredientsSectioned = hasSections(form.ingredients)
+  const stepsSectioned = hasSections(form.steps)
+  const lastIngredientSection = sectionOf(form.ingredients[form.ingredients.length - 1])
+  const lastStepSection = sectionOf(form.steps[form.steps.length - 1])
 
   const handleCancel = () => {
     clear()
@@ -489,13 +539,29 @@ export default function RecipeForm({
       <section className={sectionClass}>
         <div className="flex items-center justify-between gap-2">
           <h2 className={sectionTitleClass}>Ingredienti</h2>
-          <button
-            type="button"
-            className="inline-flex items-center min-h-[40px] px-2 text-sm text-primary font-semibold"
-            onClick={() => update({ ingredients: [...form.ingredients, emptyIngredient()] })}
-          >
-            + Aggiungi
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className="inline-flex items-center min-h-[40px] px-2 text-sm text-stone-500 font-semibold hover:text-stone-800"
+              onClick={() =>
+                update({
+                  ingredients: [...form.ingredients, emptyIngredient(nextSectionName(form.ingredients))]
+                })
+              }
+              title="Dividi in componenti (es. Pan di Spagna, Crema…)"
+            >
+              + Sezione
+            </button>
+            <button
+              type="button"
+              className="inline-flex items-center min-h-[40px] px-2 text-sm text-primary font-semibold"
+              onClick={() =>
+                update({ ingredients: [...form.ingredients, emptyIngredient(lastIngredientSection)] })
+              }
+            >
+              + Aggiungi
+            </button>
+          </div>
         </div>
 
         <div
@@ -510,7 +576,20 @@ export default function RecipeForm({
 
         <div className="space-y-2">
           {form.ingredients.map((row, idx) => (
-            <div key={idx}>
+            <Fragment key={idx}>
+            {ingredientsSectioned && isRunStart(form.ingredients, idx) && (
+              <SectionRunHeader
+                value={sectionOf(row)}
+                placeholder="Nome sezione (es. Pan di Spagna)"
+                addLabel="+ Ingrediente"
+                onRename={(name) => update({ ingredients: renameRun(form.ingredients, idx, name) })}
+                onAdd={() =>
+                  update({ ingredients: insertIntoRun(form.ingredients, idx, emptyIngredient()) })
+                }
+                onClear={() => update({ ingredients: renameRun(form.ingredients, idx, '') })}
+              />
+            )}
+            <div>
               {/* Mobile stacked */}
               <div className="md:hidden rounded-xl border border-stone-100 bg-stone-50/50 p-2.5 space-y-2">
                 <div className="flex items-start gap-2">
@@ -605,6 +684,7 @@ export default function RecipeForm({
                 <option value="pz" />
               </datalist>
             </div>
+            </Fragment>
           ))}
         </div>
       </section>
@@ -612,21 +692,41 @@ export default function RecipeForm({
       <section className={sectionClass}>
         <div className="flex items-center justify-between gap-2">
           <h2 className={sectionTitleClass}>Passi</h2>
-          <button
-            type="button"
-            className="inline-flex items-center min-h-[40px] px-2 text-sm text-primary font-semibold"
-            onClick={() => update({ steps: [...form.steps, emptyStep()] })}
-          >
-            + Aggiungi
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className="inline-flex items-center min-h-[40px] px-2 text-sm text-stone-500 font-semibold hover:text-stone-800"
+              onClick={() =>
+                update({ steps: [...form.steps, emptyStep(nextSectionName(form.steps))] })
+              }
+              title="Dividi il procedimento per componente"
+            >
+              + Sezione
+            </button>
+            <button
+              type="button"
+              className="inline-flex items-center min-h-[40px] px-2 text-sm text-primary font-semibold"
+              onClick={() => update({ steps: [...form.steps, emptyStep(lastStepSection)] })}
+            >
+              + Aggiungi
+            </button>
+          </div>
         </div>
 
         <div className="space-y-3 lg:space-y-4">
           {form.steps.map((row, idx) => (
-            <div
-              key={idx}
-              className="rounded-xl border border-stone-100 bg-stone-50/40 p-3 lg:p-4 space-y-2"
-            >
+            <Fragment key={idx}>
+            {stepsSectioned && isRunStart(form.steps, idx) && (
+              <SectionRunHeader
+                value={sectionOf(row)}
+                placeholder="Nome sezione (es. Crema al burro)"
+                addLabel="+ Passo"
+                onRename={(name) => update({ steps: renameRun(form.steps, idx, name) })}
+                onAdd={() => update({ steps: insertIntoRun(form.steps, idx, emptyStep()) })}
+                onClear={() => update({ steps: renameRun(form.steps, idx, '') })}
+              />
+            )}
+            <div className="rounded-xl border border-stone-100 bg-stone-50/40 p-3 lg:p-4 space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-primary/10 text-primary text-xs font-semibold">
                   {idx + 1}
@@ -652,6 +752,7 @@ export default function RecipeForm({
                 aria-label={`Passo ${idx + 1}`}
               />
             </div>
+            </Fragment>
           ))}
         </div>
       </section>
