@@ -12,7 +12,8 @@
 | **OAuth Dropbox PKCE** | «Sessione init» | ✅ Localhost verified |
 | **Dropbox schema + Zustand** | «Sessione init» | ✅ Localhost verified |
 | **Recipe CRUD (manual add)** | «Sessione 2» | ✅ Localhost verified |
-| **Web Scraper (AllRecipes)** | «Sessione 3» + «9» + «11» + «12» | ✅ Dosi generali + resa g/ml ≠ porzioni |
+| **Web Scraper (AllRecipes)** | «Sessione 3» + «9» + «11» + «12» + «16» | ✅ Dosi generali + resa g/ml ≠ porzioni + fallback Wayback se il sito blocca |
+| **Sezioni ricetta (componenti)** | «Sessione 16» | ✅ Pan di Spagna / Crema… su ingredienti e passi (scraper, Gemini, form, scheda) |
 | **Gemini recipe recognition** | «Sessione 3+» | ✅ Cascata in scraper |
 | **FatSecret integration** | — | ❌ Rimosso · DB locale + override utente |
 | **YouTube transcript parser** | «Sessione 5» | ✅ Localhost ready |
@@ -27,7 +28,7 @@
 | **Share ricette tra account** | «Sessione 14» | ✅ Ownership invariata; tab Condivise + tab staff con share-in |
 | **Schermo sempre acceso** | «Sessione 15» | ✅ Wake Lock + toggle Impostazioni (device-local) |
 | **Invite link monouso** | «Sessione 8» + «10» | ✅ Copia messaggio (niente email/Resend) |
-| **Deploy prod** | «Sessione 10» + «12»–«15» | ✅ Cloudflare + repo GitHub |
+| **Deploy prod** | «Sessione 10» + «12»–«16» | ✅ Cloudflare + repo GitHub |
 | **Snippet riusabili** | «Biblioteca codice critico» (fine file) | ✅ Pattern da copiare in altri progetti |
 
 ---
@@ -761,6 +762,74 @@ Toggle per tenere lo schermo acceso (utile in cucina).
 
 ---
 
+## Sessione 16 — 2026-09-24 — Sezioni ricetta (componenti) + import da siti che bloccano
+
+### Segnalazione
+1. Ricette come [Wedding cake Perugina](https://www.perugina.com/it/ricette/wedding-cake-cioccolato) dividono ingredienti e procedimento per **componente** (Pan di Spagna, Crema al burro al cioccolato, Bagna…): l’app deve mantenere questa struttura se presente.
+2. Quel link non veniva importato.
+
+### Diagnosi
+- **Download:** Akamai risponde **403** allo user-agent `RecipeBookBot`. Con header da browser risponde 200 **da una VM**, ma **dalla rete Cloudflare è 403 in ogni caso** (verificato con Worker probe temporaneo). Anche Jina Reader è bloccato. **Wayback Machine** (`id_` = HTML originale) funziona anche da Cloudflare.
+- **Dati sporchi nel JSON-LD Perugina:**
+  - `recipeIngredient` è **una stringa unica** con intestazioni `Pan di spagna:\n\n\n\t300 g farina…`
+  - `recipeInstructions` è un array di **frammenti spezzati sulle virgole** (`"…insieme al burro"`, `"lasciatelo raffreddare\n\tMontate…"`)
+- Pipeline esistente perdeva qualsiasi campo extra: `improveStepsReadability`, `mergeListFragments`, `polishStepsWithGemini`, `normalizeRecipe`, `setStep` nel form.
+
+### Soluzione
+**Modello dati (retro-compatibile)** — campo opzionale `section` su ingredienti e passi; **salvato solo se valorizzato** → le ricette esistenti e i siti senza sezioni restano identici (nessuna chiave `section`).
+
+**Download (Worker)** — `downloadRecipeHtml`:
+1. header da browser (Chrome) → 2. vecchio UA bot → 3. **Wayback** `available` + `…/web/{ts}id_/{url}`
+- pagine “muro anti-bot” con 200 (Access Denied / captcha) trattate come fallite
+- se viene da Wayback: `fetchedVia: 'wayback'` + avviso nel form con la data dello snapshot
+- se tutto fallisce: messaggio che suggerisce «Oppure da foto» / inserimento manuale
+
+**Parsing sezioni** — nuovo `worker/src/lib/scrapers/sections.js`:
+- stringa multi-riga con intestazioni `Header:` (ingredienti e passi)
+- intestazioni come elementi dell’array (`"Per la crema:"`)
+- `HowToSection.name` → `section`
+- frammenti su virgole → ricuciti con `", "` se ≥30% iniziano in minuscolo
+- un passo tipo `Setacciate a parte:\n• farina` **non** diventa sezione (serve riga vuota/indentata dopo l’header)
+
+**Pipeline** — `readableSteps` conserva `section` e **non unisce mai frammenti di sezioni diverse**; `polishStepsWithGemini` salta la riscrittura AI se ci sono sezioni (userebbe una lista piatta); schema Gemini con `section` opzionale (testo, screenshot, foto, YouTube).
+
+**UI**
+- Scheda: sottotitoli per componente su Ingredienti e Preparazione; numerazione passi continua
+- Form (Nuova / Modifica / Import): **+ Sezione**, titolo sezione modificabile, **+ Ingrediente / + Passo** nella sezione, «Togli titolo»; senza sezioni il form è identico a prima
+
+### Verifiche
+| Check | Esito |
+|-------|-------|
+| Parser su HTML reale Perugina | ✅ 5 componenti ingredienti (26 righe), 6 componenti procedimento, qualità OK senza Gemini |
+| Regressioni: ricetta piatta, HowToSection, header in array, “Setacciate a parte:”, no merge cross-sezione | ✅ assert Node |
+| Flusso completo con 403 simulato → Wayback + avviso; bloccato senza archivio → errore 502 chiaro | ✅ |
+| GialloZafferano carbonara (diretto, nessuna chiave `section`) | ✅ invariato |
+| **Scraper reale su rete Cloudflare** (probe temporaneo, poi eliminato) | ✅ via Wayback, sezioni corrette |
+| `vite build` frontend | ✅ |
+
+### File
+| File | Azione |
+|------|--------|
+| `worker/src/lib/scrapers/sections.js` | **Nuovo** — parsing sezioni |
+| `worker/src/lib/scrapers/jsonld.js` | **Modificato** — usa sections.js |
+| `worker/src/lib/scrapers/readableSteps.js` | **Modificato** — section-aware |
+| `worker/src/lib/scrapers/geminiExtract.js` | **Modificato** — schema + normalize + polish |
+| `worker/src/lib/scrapers/index.js` | **Modificato** — download a cascata + Wayback |
+| `worker/src/routes/recipes.js` | **Modificato** — `sectionField` in `normalizeRecipe` |
+| `frontend/src/utils/recipeSections.js` | **Nuovo** — run/rinomina/inserisci |
+| `frontend/src/utils/groupSteps.js` | **Modificato** — no merge cross-sezione |
+| `frontend/src/components/recipe/RecipeDetailPane.jsx` | **Modificato** — visualizzazione per componente |
+| `frontend/src/components/recipe/RecipeForm.jsx` | **Modificato** — editor sezioni |
+
+### Todo / note
+- [ ] Wayback può essere più vecchio della pagina live: l’avviso lo segnala
+- [ ] Siti bloccati **senza** snapshot Wayback: resta l’import da foto (screenshot)
+- [ ] Merge branch `cursor/desktop-recipe-form-and-split-view` → `main`
+
+**Deploy:** ✅ Worker + Pages production — 2026-09-24
+
+---
+
 ## Biblioteca codice critico (riuso in altri progetti)
 
 > Snippet **stabili e battuti in produzione** su Recipe Book. Copia/adatta; non dipendono dal dominio “ricette” se non dove indicato.
@@ -968,7 +1037,180 @@ Righe ingredienti desktop: **griglia esplicita** (evitare `display:contents` →
 
 ---
 
-### 7) Checklist riuso rapido
+### 7) Download robusto da Worker: browser headers → bot UA → Wayback
+
+`worker/src/lib/scrapers/index.js` — utile per qualsiasi scraper su Cloudflare (i CDN tipo Akamai/Incapsula bloccano spesso gli IP datacenter).
+
+```js
+const BROWSER_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+  'Accept-Language': 'it-IT,it;q=0.9,en;q=0.8',
+  'Sec-Fetch-Dest': 'document', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'none',
+  'Sec-Fetch-User': '?1', 'Upgrade-Insecure-Requests': '1'
+}
+
+const BLOCK_PAGE_RE =
+  /(access denied|temporarily unavailable|attention required|are you a robot|captcha|request unsuccessful|incapsula incident|bot detection)/i
+
+function looksBlockedHtml(html) {            // alcuni muri anti-bot rispondono 200
+  if (!html) return true
+  if (/application\/ld\+json/i.test(html)) return false
+  return html.length < 80000 && BLOCK_PAGE_RE.test(html)
+}
+
+async function fetchFromWayback(url) {
+  const avail = await fetch(`https://archive.org/wayback/available?url=${encodeURIComponent(url)}`)
+  const snap = (await avail.json().catch(() => null))?.archived_snapshots?.closest
+  if (!snap?.available || String(snap.status) !== '200') return null
+  // `id_` = HTML originale senza toolbar Wayback
+  const res = await fetch(`https://web.archive.org/web/${snap.timestamp}id_/${url}`, { redirect: 'follow' })
+  if (!res.ok) return null
+  const html = await res.text()
+  return looksBlockedHtml(html) ? null : { html, timestamp: String(snap.timestamp) }
+}
+
+async function downloadHtml(url) {
+  for (const headers of [BROWSER_HEADERS, BOT_HEADERS]) {
+    try {
+      const res = await fetch(url, { headers, redirect: 'follow' })
+      if (res.ok) {
+        const html = await res.text()
+        if (!looksBlockedHtml(html)) return { html, via: 'direct' }
+      }
+    } catch { /* prova il prossimo */ }
+  }
+  const archived = await fetchFromWayback(url)
+  if (archived) return { html: archived.html, via: 'wayback', archivedAt: archived.timestamp }
+  throw Object.assign(new Error('Il sito blocca il download e non esiste una copia archiviata'), { status: 502 })
+}
+```
+
+**Testare dalla rete Cloudflare (non dal PC):** gli header da browser possono funzionare in locale e fallire in produzione. Deploy di un Worker probe temporaneo → `curl` → `wrangler delete --name … --force`.
+
+---
+
+### 8) Sezioni / componenti (JSON-LD sporco → gruppi)
+
+`worker/src/lib/scrapers/sections.js` — riconosce `Header:` senza confonderlo con `Setacciate a parte:` + elenco.
+
+```js
+function headerBody(trimmed) {
+  if (!/[:：]$/.test(trimmed)) return null
+  const body = trimmed.replace(/[:：]$/, '').trim()
+  if (body.length < 2 || body.length > 60) return null
+  if (body.split(/\s+/).length > 8) return null
+  if (/^\d/.test(body)) return null
+  return body
+}
+
+// Ingredienti: header se senza cifre o seguito da riga vuota/indentata.
+// Passi: header SOLO se seguito da riga vuota/indentata.
+function isHeaderLine(raw, nextRaw, mode) {
+  if (/^[\t ]/.test(raw || '')) return false
+  const body = headerBody(String(raw).trim())
+  if (!body) return false
+  const nextBreaks = nextRaw == null || !nextRaw.trim() || /^[\t ]/.test(nextRaw)
+  return mode === 'ingredients' ? nextBreaks || !/\d/.test(body) : nextBreaks
+}
+
+export function splitSectionedText(text, { mode = 'ingredients', initialSection = '' } = {}) {
+  const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n')
+  const out = []
+  let section = initialSection
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim()
+    if (!trimmed) continue
+    if (isHeaderLine(lines[i], lines[i + 1], mode)) { section = cleanSectionName(trimmed); continue }
+    out.push({ section, text: trimmed.replace(/^[-•*]\s+/, '') })
+  }
+  return out
+}
+
+// CMS che spezzano un testo sulle virgole in tanti elementi → ricucire
+function joinInstructionFragments(items) {
+  const nonEmpty = items.map(String).filter((s) => s.trim())
+  const lower = nonEmpty.filter((s) => /^[a-zà-ÿ]/.test(s.trim())).length
+  return nonEmpty.join(lower / nonEmpty.length >= 0.3 ? ', ' : '\n')
+}
+
+// Chiave presente solo se valorizzata → dati vecchi invariati
+export function withSection(item, section) {
+  const name = cleanSectionName(section)
+  if (!name) { const { section: _drop, ...rest } = item; return rest }
+  return { ...item, section: name }
+}
+```
+
+Salvataggio (Worker):
+
+```js
+function sectionField(item) {
+  const section = String(item?.section || '').replace(/\s+/g, ' ').trim().slice(0, 80)
+  return section ? { section } : {}
+}
+// ingredients.map((i, idx) => ({ id, name, quantity, unit, notes, nutritionId, ...sectionField(i) }))
+```
+
+**Regola d’oro pipeline:** ogni trasformazione di liste (leggibilità, merge elenchi, rewrite AI) deve (a) **copiare** `section` e (b) **non unire** elementi con sezioni diverse. Il rewrite AI che restituisce una lista piatta va saltato se ci sono sezioni.
+
+---
+
+### 9) UI: lista piatta + “run” di sezione (React)
+
+`frontend/src/utils/recipeSections.js` — niente struttura annidata: una sezione = elementi consecutivi con lo stesso nome. Semplice da salvare, ordinare e scalare.
+
+```js
+export const sectionOf = (item) => String(item?.section || '').trim()
+
+export function groupBySection(items) {
+  const groups = []
+  ;(items || []).forEach((item, index) => {
+    const section = sectionOf(item)
+    const last = groups[groups.length - 1]
+    if (last && last.section === section) last.entries.push({ item, index })
+    else groups.push({ section, startIndex: index, entries: [{ item, index }] })
+  })
+  return groups
+}
+
+export const isRunStart = (items, i) => i === 0 || sectionOf(items[i]) !== sectionOf(items[i - 1])
+
+export function runEndIndex(items, start) {
+  const s = sectionOf(items[start]); let end = start
+  while (end + 1 < items.length && sectionOf(items[end + 1]) === s) end += 1
+  return end
+}
+
+export function renameRun(items, start, name) {        // '' = togli titolo
+  const end = runEndIndex(items, start)
+  return items.map((it, i) => (i < start || i > end ? it : name.trim() ? { ...it, section: name } : (({ section, ...r }) => r)(it)))
+}
+
+export function insertIntoRun(items, start, newItem) { // aggiunge in fondo alla sezione
+  const end = runEndIndex(items, start)
+  const next = [...items]
+  next.splice(end + 1, 0, sectionOf(items[start]) ? { ...newItem, section: sectionOf(items[start]) } : newItem)
+  return next
+}
+```
+
+Render (scheda):
+
+```jsx
+{groupBySection(items).map((g) => (
+  <div key={g.startIndex}>
+    {g.section ? <h3 className="text-[13px] font-semibold uppercase tracking-wide text-primary/90">{g.section}</h3> : null}
+    <ul>{g.entries.map(({ item }) => <li key={item.id}>{item.name}</li>)}</ul>
+  </div>
+))}
+```
+
+Form: header di sezione solo **all’inizio di ogni run** e solo se la lista ha almeno una sezione → senza sezioni l’editor resta identico. Attenzione agli update: `{ ...row, instruction }` (non `{ instruction }`, che cancella la sezione).
+
+---
+
+### 10) Checklist riuso rapido
 
 | Pattern | Dove | Portabile? |
 |---------|------|------------|
@@ -978,5 +1220,9 @@ Righe ingredienti desktop: **griglia esplicita** (evitare `display:contents` →
 | Tab “vista persona” = own+sharedIn | admin dashboard | sì |
 | Wake Lock + zustand persist | PWA cucina / kiosk / lettura | sì |
 | Grid form 2 col + griglia riga | form lunghi desktop | sì |
+| Download browser → bot → Wayback | scraper su Workers / serverless | sì |
+| Probe Worker temporaneo per testare egress | debug blocchi CDN | sì (Cloudflare) |
+| Sezioni come “run” in lista piatta | ricette, checklist, capitoli, preventivi | sì |
+| Campo opzionale salvato solo se valorizzato | evoluzioni schema senza migrazione | sì |
 | Wrangler Pages con Global API Key | `EMAIL`+`API_KEY`, non `API_TOKEN` Bearer | sì (Cloudflare) |
 
