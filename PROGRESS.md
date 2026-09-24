@@ -16,7 +16,7 @@
 | **Sezioni ricetta (componenti)** | «Sessione 16» | ✅ Pan di Spagna / Crema… su ingredienti e passi (scraper, Gemini, form, scheda) |
 | **Gemini recipe recognition** | «Sessione 3+» | ✅ Cascata in scraper |
 | **FatSecret integration** | — | ❌ Rimosso · DB locale + override utente |
-| **YouTube transcript parser** | «Sessione 5» | ✅ Localhost ready |
+| **YouTube transcript parser** | «Sessione 5» + «17» | ✅ Sottotitoli (web → Android) + **Gemini guarda il video** se mancano |
 | **Shopping list feature** | «Sessione 3» + «12» | ✅ UX mobile checklist |
 | **Material Design 3 UI** | «Sessione X» | ⏳ Pending (mobile HIG/Material touch già applicati) |
 | **Multi-user + RBAC** | «Sessione 7» + «10» | ✅ Ownership per utente + assign staff + reset/recovery |
@@ -28,7 +28,7 @@
 | **Share ricette tra account** | «Sessione 14» | ✅ Ownership invariata; tab Condivise + tab staff con share-in |
 | **Schermo sempre acceso** | «Sessione 15» | ✅ Wake Lock + toggle Impostazioni (device-local) |
 | **Invite link monouso** | «Sessione 8» + «10» | ✅ Copia messaggio (niente email/Resend) |
-| **Deploy prod** | «Sessione 10» + «12»–«16» | ✅ Cloudflare + repo GitHub |
+| **Deploy prod** | «Sessione 10» + «12»–«17» | ✅ Cloudflare + repo GitHub |
 | **Snippet riusabili** | «Biblioteca codice critico» (fine file) | ✅ Pattern da copiare in altri progetti |
 
 ---
@@ -830,6 +830,57 @@ Toggle per tenere lo schermo acceso (utile in cucina).
 
 ---
 
+## Sessione 17 — 2026-09-24 — YouTube senza transcript: lo crea Gemini
+
+### Segnalazione
+Alcuni video YouTube non restituiscono il transcript. Richiesta: far sì che l’app lo generi (idea da un `PROGRESS.md` di un altro progetto — repo `en-writing-coach` privato, non accessibile da questa sessione: implementata la soluzione standard equivalente).
+
+### Diagnosi
+1. **Sottotitoli che esistono ma arrivano vuoti:** le tracce sono nella pagina (`captionTracks`), ma l’URL `timedtext` dal server risponde **200 con 0 byte** (YouTube ora richiede un PO token). L’app diceva “nessuna trascrizione” anche con sottotitoli presenti.
+2. **Muro anti-bot per IP:** per molti video (es. “Fatto in Casa da Benedetta”) pagina e API interne (ANDROID, IOS, ANDROID_VR, MWEB, TVHTML5) rispondono `LOGIN_REQUIRED — Accedi per confermare di non essere un bot`: niente titolo, niente descrizione, niente sottotitoli → l’app si fermava con “YouTube non raggiungibile”.
+3. **Gemini accetta URL YouTube pubblici** come `fileData`: il video lo scarica Google (non il nostro Worker), quindi il muro anti-bot non conta.
+
+### Soluzione — cascata in `parseRecipeFromYoutube`
+1. Trascrizione **incollata** dall’utente
+2. Sottotitoli dalla **pagina web**
+3. Sottotitoli dal client **ANDROID** innertube (`20.10.38`, URL scaricabili senza PO token) — funziona per molti video, anche da Cloudflare
+4. **Gemini guarda e ascolta il video** (audio + testo a schermo) → ricetta JSON diretta
+   - `mediaResolution: MEDIA_RESOLUTION_LOW` per stare nei limiti gratuiti
+   - video > 45 min: analisi dei primi 45 min (`videoMetadata.endOffset`) con avviso
+5. Sola **descrizione** del video
+6. Altrimenti `YOUTUBE_TRANSCRIPT_REQUIRED` (il form mostra il campo trascrizione) con il motivo del fallimento IA
+
+Metadati: pagina → Android → **oEmbed** (titolo/canale sempre disponibili). Video privato/rimosso (oEmbed 401/404) → errore chiaro `YOUTUBE_VIDEO_UNAVAILABLE`, senza sprecare chiamate Gemini. Il muro anti-bot (`LOGIN_REQUIRED`) **non** viene trattato come “video privato”.
+
+UI: durante l’import YouTube compare «Se il video non ha sottotitoli l’IA lo guarda e lo ascolta: può servire fino a un minuto.»; avviso nel form: «Nessun sottotitolo: ricetta ricavata dall’IA guardando e ascoltando il video».
+
+### Verifiche
+| Check | Esito |
+|-------|-------|
+| Sottotitoli web vuoti → client Android (locale + **rete Cloudflare**) | ✅ testo completo |
+| Formato XML 3 (`<p><s>…</s></p>`) | ✅ |
+| Video bot-wall: metadati via oEmbed | ✅ |
+| **Gemini video reale con chiavi di produzione** (versione Worker di prova **non deployata**, stessi secret) — “Torta di mele semplice” Benedetta | ✅ 53 s, 8 ingredienti con dosi, 15 passi, temperature forno |
+| Rami con stub: video IA, trascrizione manuale, IA fallita → richiesta trascrizione, video non disponibile → nessuna chiamata Gemini | ✅ |
+| Produzione: nuova versione al 100%, route di test assente (404) | ✅ |
+
+### File
+| File | Azione |
+|------|--------|
+| `worker/src/lib/youtube/transcript.js` | **Modificato** — Android innertube, oEmbed, XML 3, `transcriptSource` |
+| `worker/src/lib/youtube/parseRecipe.js` | **Riscritto** — cascata + Gemini video |
+| `worker/src/lib/geminiClient.js` | **Modificato** — opzione `generationConfig` extra |
+| `frontend/src/pages/ImportRecipe.jsx` | **Modificato** — messaggio attesa analisi video |
+
+### Todo / note
+- [ ] Quota gratuita Gemini video: ~8 h di video al giorno; un video = 1 chiamata
+- [ ] Il client Android può cambiare versione minima: se smette, aggiornare `ANDROID_CLIENT_VERSION` (Gemini resta comunque il fallback)
+- [ ] La versione di prova `c717072d` del Worker resta nello storico versioni (non riceve traffico; la route di test richiede un token casuale mai pubblicato)
+
+**Deploy:** ✅ Worker + Pages production — 2026-09-24
+
+---
+
 ## Biblioteca codice critico (riuso in altri progetti)
 
 > Snippet **stabili e battuti in produzione** su Recipe Book. Copia/adatta; non dipendono dal dominio “ricette” se non dove indicato.
@@ -1210,7 +1261,77 @@ Form: header di sezione solo **all’inizio di ogni run** e solo se la lista ha 
 
 ---
 
-### 10) Checklist riuso rapido
+### 10) YouTube: sottotitoli robusti + Gemini che guarda il video
+
+`worker/src/lib/youtube/transcript.js` + `parseRecipe.js` — riusabile per riassunti, note, quiz da video.
+
+**a) Sottotitoli senza PO token (client Android innertube):**
+
+```js
+const ANDROID_CLIENT_VERSION = '20.10.38'
+const ANDROID_UA = `com.google.android.youtube/${ANDROID_CLIENT_VERSION} (Linux; U; Android 11) gzip`
+
+async function fetchAndroidPlayer(videoId) {
+  const res = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'User-Agent': ANDROID_UA },
+    body: JSON.stringify({
+      context: { client: { clientName: 'ANDROID', clientVersion: ANDROID_CLIENT_VERSION, androidSdkVersion: 30, hl: 'it', gl: 'IT' } },
+      videoId
+    })
+  })
+  return res.ok ? res.json().catch(() => null) : null
+}
+// tracks = player.captions.playerCaptionsTracklistRenderer.captionTracks
+// testo: fetch(track.baseUrl + '&fmt=json3', { headers: { 'User-Agent': ANDROID_UA } }) → events[].segs[].utf8
+```
+
+Nota: se `playabilityStatus.status === 'LOGIN_REQUIRED'` con motivo “non sei un bot” è un **muro per IP**, non un video privato.
+
+**b) Metadati sempre disponibili (oEmbed):**
+
+```js
+const r = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(watchUrl)}&format=json`)
+// 200 → { title, author_name } · 401/404 → video privato/rimosso (non chiamare Gemini)
+```
+
+**c) Gemini guarda il video (crea lui la “trascrizione”):**
+
+```js
+const videoPart = { fileData: { fileUri: `https://www.youtube.com/watch?v=${videoId}` } }
+if (lengthSeconds > 45 * 60) {
+  videoPart.videoMetadata = { startOffset: '0s', endOffset: `${45 * 60}s` }  // clip video lunghi
+}
+
+const body = {
+  contents: [{ role: 'user', parts: [videoPart, { text: 'Guarda e ascolta il video (audio + testo a schermo)… restituisci SOLO JSON {…}' }] }],
+  generationConfig: {
+    temperature: 0.15,
+    responseMimeType: 'application/json',
+    mediaResolution: 'MEDIA_RESOLUTION_LOW'   // ~3x meno token: resta nei limiti free tier
+  }
+}
+await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+})
+```
+
+- Solo video **pubblici**; free tier ≈ 8 h di video/giorno; ~50 s per un video di 10 min
+- Il video lo scarica Google → funziona anche quando il tuo server è bloccato da YouTube
+- Ordine consigliato: testo incollato → sottotitoli (web, Android) → **video Gemini** → descrizione → chiedi testo all’utente
+
+**d) Testare con i secret di produzione senza toccare la produzione (Cloudflare):**
+
+```bash
+# copia del worker + route di debug protetta da token casuale
+npx wrangler versions upload --message "probe (non deployato)"
+# → "Version Preview URL: https://<id>-<worker>.<sub>.workers.dev"  (stessi secret, 0% traffico)
+curl "https://<id>-<worker>.<sub>.workers.dev/__probe?token=…"
+```
+
+---
+
+### 11) Checklist riuso rapido
 
 | Pattern | Dove | Portabile? |
 |---------|------|------------|
@@ -1223,6 +1344,9 @@ Form: header di sezione solo **all’inizio di ogni run** e solo se la lista ha 
 | Download browser → bot → Wayback | scraper su Workers / serverless | sì |
 | Probe Worker temporaneo per testare egress | debug blocchi CDN | sì (Cloudflare) |
 | Sezioni come “run” in lista piatta | ricette, checklist, capitoli, preventivi | sì |
+| Sottotitoli YouTube via client Android + oEmbed | qualsiasi app che legge video | sì |
+| Gemini `fileData` con URL YouTube (low res + clip) | riassunti/estrazione da video | sì |
+| `wrangler versions upload` per test con secret reali | debug prod senza deploy | sì (Cloudflare) |
 | Campo opzionale salvato solo se valorizzato | evoluzioni schema senza migrazione | sì |
 | Wrangler Pages con Global API Key | `EMAIL`+`API_KEY`, non `API_TOKEN` Bearer | sì (Cloudflare) |
 
