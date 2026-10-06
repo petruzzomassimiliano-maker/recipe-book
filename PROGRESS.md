@@ -15,7 +15,8 @@
 | **Dropbox schema + Zustand** | «Sessione init» | ✅ Localhost verified |
 | **Recipe CRUD (manual add)** | «Sessione 2» | ✅ Localhost verified |
 | **Web Scraper (AllRecipes)** | «Sessione 3» + «9» + «11» + «12» + «16» | ✅ Dosi generali + resa g/ml ≠ porzioni + fallback Wayback se il sito blocca |
-| **Sezioni ricetta (componenti)** | «Sessione 16» | ✅ Pan di Spagna / Crema… su ingredienti e passi (scraper, Gemini, form, scheda) |
+| **Sezioni ricetta (componenti)** | «Sessione 16» + «18» | ✅ Pan di Spagna / Crema… su ingredienti e passi (scraper, Gemini, form, scheda) + gruppi dall’HTML se il JSON-LD è piatto |
+| **Riordino trascinando** | «Sessione 18» | ✅ Ingredienti e passi: maniglia ⋮⋮ (mouse + touch + frecce), rispetta le sezioni |
 | **Gemini recipe recognition** | «Sessione 3+» | ✅ Cascata in scraper |
 | **FatSecret integration** | — | ❌ Rimosso · DB locale + override utente |
 | **YouTube transcript parser** | «Sessione 5» + «17» | ✅ Sottotitoli (web → Android) + **Gemini guarda il video** se mancano |
@@ -883,6 +884,56 @@ UI: durante l’import YouTube compare «Se il video non ha sottotitoli l’IA l
 
 ---
 
+## Sessione 18 — 2026-10-06 — Sezioni dall’HTML (Tavolartegusto) + riordino trascinando
+
+### Segnalazione
+1. `https://www.tavolartegusto.it/ricetta/pancake-salati/`: l’import non individua le sezioni degli ingredienti («Impasto base pancake salati», «Per farcire»).
+2. Poter spostare ingredienti in alto/in basso **trascinandoli**.
+
+### Diagnosi
+- Il JSON-LD del sito ha `recipeIngredient` **piatto** (14 righe, nessun titolo). I gruppi esistono solo nell’HTML: `<p class="li-subtitle">Per farcire:</p><ul><li>…</li></ul>`.
+- Stesso schema su WP Recipe Maker (`<h4 class="wprm-recipe-group-name">…</h4><ul>`), es. RecipeTinEats: anche lì il JSON-LD è piatto.
+- Primo tentativo (scansione “greedy” in ordine) **sbagliato** sulle Lasagne di Tavolartegusto: “50 gr di farina” (sfoglia) agganciava l’identica riga della besciamella e saltava tutto il ragù → serve un **allineamento globale** che rispetti l’ordine.
+
+### Soluzione
+**Worker** (`sections.js` → usato da `jsonld.js` solo se il JSON-LD non ha già sezioni):
+1. `htmlListGroups(html)`: trova ogni “titolo breve seguito da `<ul>/<ol>`” (`p`, `h2–h6`, `strong`, `b`, `span`, `div`, `dt`); titolo ≤ 60 caratteri, ≤ 12 parole, non inizia con un numero; toglie “:” e parentesi finali; “Ingredienti” / “Ingredienti per 4 persone” = nessuna sezione.
+2. `applyHtmlIngredientSections(ingredients, html)`: allinea ingredienti JSON-LD ↔ righe HTML con **LCS pesato** (punteggio = % parole dell’ingrediente presenti nella riga, soglia 0,6). Applica solo se **≥ 2 sezioni con nome** e **≥ 60 %** degli ingredienti abbinati; i non abbinati ereditano la sezione precedente. Altrimenti restituisce l’input invariato (nessuna chiave `section`).
+
+**Frontend** (`RecipeForm.jsx` + nuovo `hooks/useDragReorder.js`):
+- Maniglia ⋮⋮ a sinistra di ogni ingrediente (mobile e desktop) e di ogni passo.
+- Pointer Events (mouse, touch, penna) con `touch-action: none` **solo sulla maniglia**: il resto della riga resta scorrevole/modificabile.
+- La riga segue il dito; una **linea colorata** indica dove cadrà; scroll automatico vicino ai bordi (zone che coprono header sticky e barra azioni mobile).
+- **Sezioni:** al confine tra due sezioni ci sono due posizioni distinte: sopra il titolo = fine della sezione precedente, sotto il titolo = inizio della successiva. L’elemento prende la sezione di dove viene lasciato.
+- Tastiera: focus sulla maniglia + ↑/↓ (al confine prima cambia sezione, poi posizione); Esc annulla il trascinamento.
+
+### Verifiche
+| Check | Esito |
+|-------|-------|
+| Pancake salati (Tavolartegusto) | ✅ 7 × «Impasto base pancake salati» + 7 × «Per farcire» |
+| Lasagne alla bolognese (Tavolartegusto) | ✅ Sfoglia all’uovo / Ragù alla bolognese / Besciamella / Per completare |
+| RecipeTinEats Lasagna (WPRM) | ✅ Ragu Bolognese / Cheese Sauce / Lasagna |
+| Perugina wedding cake (sezioni già nel JSON-LD) | ✅ invariata |
+| GialloZafferano Carbonara, Tiramisù; Misya; ricettedellanonna (piatte) | ✅ nessuna `section` aggiunta |
+| `moveItem` / `moveItemByStep` (unit) | ✅ |
+| Browser reale (Chrome, pagina di prova locale con il form vero): trascinamento mouse desktop, touch mobile 390 px, cross-sezione nei due versi, frecce tastiera, digitazione dopo il drag, salvataggio con sezioni | ✅ |
+| `npm run build` | ✅ |
+
+### File
+| File | Azione |
+|------|--------|
+| `worker/src/lib/scrapers/sections.js` | **Modificato** — `htmlListGroups`, `applyHtmlIngredientSections` |
+| `worker/src/lib/scrapers/jsonld.js` | **Modificato** — applica i gruppi HTML agli ingredienti |
+| `frontend/src/hooks/useDragReorder.js` | **Nuovo** — riordino pointer/touch/tastiera, section-aware |
+| `frontend/src/utils/recipeSections.js` | **Modificato** — `moveItem`, `moveItemByStep` |
+| `frontend/src/components/recipe/RecipeForm.jsx` | **Modificato** — `DragHandle`, `DropLine`, maniglie su ingredienti e passi |
+
+### Todo / note
+- [ ] I passi Tavolartegusto hanno `HowToStep.name` (“Come fare…”, “cottura…”): non usati come sezioni (un titolo per ogni singolo passo sarebbe rumore)
+- [ ] Il parser euristico (siti senza JSON-LD) non usa ancora `htmlListGroups`
+
+---
+
 ## Biblioteca codice critico (riuso in altri progetti)
 
 > Snippet **stabili e battuti in produzione** su Recipe Book. Copia/adatta; non dipendono dal dominio “ricette” se non dove indicato.
@@ -1351,4 +1402,87 @@ curl "https://<id>-<worker>.<sub>.workers.dev/__probe?token=…"
 | `wrangler versions upload` per test con secret reali | debug prod senza deploy | sì (Cloudflare) |
 | Campo opzionale salvato solo se valorizzato | evoluzioni schema senza migrazione | sì |
 | Wrangler Pages con Global API Key | `EMAIL`+`API_KEY`, non `API_TOKEN` Bearer | sì (Cloudflare) |
+| Gruppi HTML “titolo + lista” allineati con LCS | scraper con JSON-LD piatto | sì |
+| Drag & drop pointer events senza librerie | liste riordinabili mobile+desktop | sì |
+
+---
+
+### 12) Gruppi HTML → sezioni su lista JSON-LD piatta (allineamento LCS)
+
+`worker/src/lib/scrapers/sections.js` — perché non “greedy”: righe identiche in gruppi diversi (“50 g farina”, “sale”) farebbero saltare interi gruppi.
+
+```js
+// 1) "titolo breve" seguito da <ul>/<ol>  →  [{ section, items[] }]
+const re =
+  /<(p|h[2-6]|strong|b|span|div|dt)\b[^>]*>((?:(?!<\/?(?:ul|ol|p|div|h[1-6]|li|table)\b)[\s\S]){1,400}?)<\/\1>\s*(?:<br\s*\/?>\s*|<\/(?:strong|b|span|p|div)>\s*)*<(ul|ol)\b[^>]*>([\s\S]*?)<\/\3>/gi
+
+// 2) token per il confronto (minuscolo, senza accenti, senza stopword)
+const matchTokens = (t) => normalize(t).split(' ')
+  .filter((w) => w.length >= 2 && !STOPWORDS.has(w))
+const matchScore = (a, b) => { const s = new Set(b); return a.filter((t) => s.has(t)).length / a.length }
+
+// 3) LCS pesato: massimizza la somma dei punteggi mantenendo l'ordine
+const score = (i, j) => { const s = matchScore(ingTokens[i], flat[j].tokens); return s >= 0.6 ? s : 0 }
+const dp = Array.from({ length: n + 1 }, () => new Float64Array(m + 1))
+for (let i = 1; i <= n; i++)
+  for (let j = 1; j <= m; j++) {
+    const s = score(i - 1, j - 1)
+    dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1], s ? dp[i - 1][j - 1] + s : 0)
+  }
+const assigned = new Array(n).fill(null)
+for (let i = n, j = m; i > 0 && j > 0; ) {
+  const s = score(i - 1, j - 1)
+  if (s && dp[i][j] === dp[i - 1][j - 1] + s) { assigned[--i] = flat[--j].section }
+  else if (dp[i][j] === dp[i - 1][j]) i--
+  else j--
+}
+// 4) applica solo se affidabile, altrimenti lascia l'input com'è
+if (new Set(assigned.filter(Boolean)).size < 2 || matchedRatio < 0.6) return list
+```
+
+### 13) Riordino trascinando (Pointer Events, touch + mouse + tastiera, senza librerie)
+
+`frontend/src/hooks/useDragReorder.js` + `utils/recipeSections.js`
+
+```js
+// Slot di rilascio in coordinate pagina: "prima della riga i" + "dopo la riga i" a fine run,
+// così sopra/sotto un titolo di sezione sono due posizioni diverse.
+function buildSlots(items, rects) {
+  const slots = []
+  items.forEach((item, i) => {
+    const r = rects[i], section = sectionOf(item)
+    slots.push({ insertAt: i, section, y: r.top, row: i, edge: 'before' })
+    if (i === items.length - 1 || sectionOf(items[i + 1]) !== section)
+      slots.push({ insertAt: i + 1, section, y: r.bottom, row: i, edge: 'after' })
+  })
+  return slots
+}
+
+// pointerdown sulla maniglia (style touch-action:none) → setPointerCapture + snapshot rect
+// pointermove → dy = (clientY + scrollY) - startPageY ; slot = il più vicino a (startCenter + dy)
+// requestAnimationFrame: scroll automatico vicino ai bordi, ricalcolo dy
+// pointerup → onChange(moveItem(items, from, slot.insertAt, slot.section))
+
+export function moveItem(items, from, insertAt, section) {
+  const at = insertAt > from ? insertAt - 1 : insertAt
+  if (at === from && sectionOf(items[from]) === String(section || '').trim()) return items
+  const next = [...items]
+  const [item] = next.splice(from, 1)
+  next.splice(at, 0, applySection(item, section)) // section vuota → chiave rimossa
+  return next
+}
+```
+
+Uso nel form:
+
+```jsx
+const drag = useDragReorder(form.ingredients, (next) => update({ ingredients: next }))
+<div ref={drag.rowRef(idx)} style={drag.rowStyle(idx)} className="relative">
+  <DropLine edge={drag.indicator(idx)} />        {/* absolute: non sposta il layout misurato */}
+  <DragHandle {...drag.handleProps(idx)} label={`Sposta ingrediente ${idx + 1}`} />
+  …
+</div>
+```
+
+Trappole evitate: la linea va in `position:absolute` (un elemento in flusso cambierebbe le misure durante il drag; dentro `space-y-*` anche il margine); z-index della linea > riga trascinata; con due layout (mobile/desktop) nascosti via CSS il focus da tastiera va alla maniglia **visibile** (`offsetParent !== null`).
 
