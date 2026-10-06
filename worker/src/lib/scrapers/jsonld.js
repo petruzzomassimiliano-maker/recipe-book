@@ -6,7 +6,7 @@ import {
   resolveRecipeYield,
   stripTags
 } from './_base.js'
-import { ingredientsFromJsonLd, stepsFromJsonLd } from './sections.js'
+import { applyHtmlIngredientSections, ingredientsFromJsonLd, stepsFromJsonLd } from './sections.js'
 
 function findRecipeNodes(node, out = []) {
   if (!node || typeof node !== 'object') return out
@@ -73,7 +73,10 @@ export function parseJsonLdRecipe(html, sourceUrl) {
       draft.notes = draft.notes ? `${draft.notes}\n\n${resa}` : resa
     }
   }
-  draft.ingredients = ingredientsFromJsonLd(recipe.recipeIngredient)
+  draft.ingredients = applyHtmlIngredientSections(
+    ingredientsFromJsonLd(recipe.recipeIngredient),
+    html
+  )
   draft.steps = stepsFromJsonLd(recipe.recipeInstructions)
 
   if (!draft.title || (!draft.ingredients.length && !draft.steps.length)) return null

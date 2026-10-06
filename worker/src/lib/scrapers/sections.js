@@ -127,6 +127,124 @@ export function ingredientsFromJsonLd(recipeIngredient) {
   return out
 }
 
+const GENERIC_INGREDIENT_HEADER_RE =
+  /^(ingredienti|ingredients|ingrédients|zutaten|ingredientes)(\s+per\s+\d[^]*|\s*\([^)]*\))?$/i
+
+function normalizeForMatch(text) {
+  return String(text || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function matchTokens(text) {
+  return normalizeForMatch(text)
+    .split(' ')
+    .filter((t) => t.length >= 2 && !/^(di|da|del|della|dei|delle|per|con|il|la|le|lo|gli|un|una|of|the|and)$/.test(t))
+}
+
+/**
+ * HTML "header followed by list" groups, e.g.
+ *   <p class="li-subtitle">Per farcire:</p><ul><li>…</li></ul>
+ *   <h4 class="wprm-recipe-group-name">Crema</h4><ul>…</ul>
+ *   <p><strong>Per la base</strong></p><ul>…</ul>
+ * @returns {{ section: string, items: string[] }[]}
+ */
+export function htmlListGroups(html) {
+  const groups = []
+  const re =
+    /<(p|h[2-6]|strong|b|span|div|dt)\b[^>]*>((?:(?!<\/?(?:ul|ol|p|div|h[1-6]|li|table)\b)[\s\S]){1,400}?)<\/\1>\s*(?:<br\s*\/?>\s*|<\/(?:strong|b|span|p|div)>\s*)*<(ul|ol)\b[^>]*>([\s\S]*?)<\/\3>/gi
+  let match
+  while ((match = re.exec(String(html || ''))) !== null) {
+    const headerText = stripTags(match[2])
+    const body = headerText
+      .replace(/[:：]\s*$/, '')
+      .replace(/^(.{2,}?)\s*\([^)]*\)\s*$/, '$1')
+      .replace(/[:：]\s*$/, '')
+      .trim()
+    if (body.length < 2 || body.length > HEADER_MAX_LENGTH) continue
+    if (body.split(/\s+/).length > HEADER_MAX_WORDS + 4) continue
+    if (/^\d/.test(body)) continue
+    const items = [...match[4].matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/gi)]
+      .map((m) => stripTags(m[1]))
+      .filter(Boolean)
+    if (!items.length) continue
+    const section = GENERIC_INGREDIENT_HEADER_RE.test(body) ? '' : cleanSectionName(body)
+    groups.push({ section, items })
+  }
+  return groups
+}
+
+function ingredientMatchText(ing) {
+  return [ing?.quantity, ing?.unit, ing?.name, ing?.notes].filter((v) => v != null && v !== '').join(' ')
+}
+
+function matchScore(ingTokens, itemTokens) {
+  if (!ingTokens.length || !itemTokens.length) return 0
+  const itemSet = new Set(itemTokens)
+  const hits = ingTokens.filter((t) => itemSet.has(t)).length
+  return hits / ingTokens.length
+}
+
+/**
+ * Flat JSON-LD ingredients + HTML list groups → ingredients with sections.
+ * Matching is in page order (monotonic) so repeated items like "sale" land in
+ * the right group. Returns the input unchanged unless the result is confident:
+ * ≥ 2 named sections and ≥ 60% of ingredients matched.
+ */
+export function applyHtmlIngredientSections(ingredients, html) {
+  const list = ingredients || []
+  if (!list.length || hasSections(list)) return list
+
+  const flat = htmlListGroups(html).flatMap((g) =>
+    g.items.map((text) => ({ section: g.section, tokens: matchTokens(text) }))
+  )
+  if (!flat.length) return list
+
+  // Order-preserving alignment (weighted LCS): a greedy scan would let an early
+  // "50 gr di farina" jump to a later identical line and skip whole groups.
+  const n = list.length
+  const m = flat.length
+  if (n * m > 60000) return list
+  const ingTokens = list.map((ing) => matchTokens(ingredientMatchText(ing)))
+  const score = (i, j) => {
+    const s = matchScore(ingTokens[i], flat[j].tokens)
+    return s >= 0.6 ? s : 0
+  }
+  const dp = Array.from({ length: n + 1 }, () => new Float64Array(m + 1))
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      const s = score(i - 1, j - 1)
+      dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1], s ? dp[i - 1][j - 1] + s : 0)
+    }
+  }
+  const assigned = new Array(n).fill(null)
+  for (let i = n, j = m; i > 0 && j > 0; ) {
+    const s = score(i - 1, j - 1)
+    if (s && dp[i][j] === dp[i - 1][j - 1] + s) {
+      assigned[i - 1] = flat[j - 1].section
+      i--
+      j--
+    } else if (dp[i][j] === dp[i - 1][j]) {
+      i--
+    } else {
+      j--
+    }
+  }
+
+  const matched = assigned.filter((s) => s !== null).length
+  const named = new Set(assigned.filter(Boolean))
+  if (named.size < 2 || matched / list.length < 0.6) return list
+
+  let current = assigned.find((s) => s !== null) || ''
+  return list.map((ing, i) => {
+    if (assigned[i] !== null) current = assigned[i]
+    return withSection(ing, current)
+  })
+}
+
 /**
  * Some CMS split one instruction string on commas into many array items
  * ("…insieme al burro", "lasciatelo raffreddare\n\tMontate…").
