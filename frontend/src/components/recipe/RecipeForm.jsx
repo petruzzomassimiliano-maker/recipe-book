@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '../../hooks/useAuth.js'
+import { useDragReorder } from '../../hooks/useDragReorder.js'
 import { useSessionDraft } from '../../hooks/useSessionDraft.js'
 import { listUsers } from '../../services/users.js'
 import { readAndCompressImage, uploadRecipeImage } from '../../services/media.js'
@@ -44,6 +45,39 @@ function SectionRunHeader({ value, placeholder, addLabel, onRename, onAdd, onCle
         </button>
       ) : null}
     </div>
+  )
+}
+
+function DragHandle({ label, className = '', ...props }) {
+  return (
+    <button
+      type="button"
+      className={`shrink-0 inline-flex items-center justify-center min-h-[44px] w-8 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 cursor-grab active:cursor-grabbing select-none disabled:opacity-30 disabled:cursor-default ${className}`}
+      aria-label={label}
+      title="Trascina per spostare (oppure frecce ↑ ↓)"
+      {...props}
+    >
+      <svg className="w-4 h-5" viewBox="0 0 16 20" fill="currentColor" aria-hidden>
+        <circle cx="5" cy="4" r="1.6" />
+        <circle cx="11" cy="4" r="1.6" />
+        <circle cx="5" cy="10" r="1.6" />
+        <circle cx="11" cy="10" r="1.6" />
+        <circle cx="5" cy="16" r="1.6" />
+        <circle cx="11" cy="16" r="1.6" />
+      </svg>
+    </button>
+  )
+}
+
+/** Drop position line; absolutely positioned so it never shifts the measured layout. */
+function DropLine({ edge, offset = 6 }) {
+  if (!edge) return null
+  return (
+    <div
+      className="pointer-events-none absolute inset-x-0 z-40 h-1 rounded-full bg-primary shadow-[0_0_0_2px_rgba(255,255,255,0.9)]"
+      style={edge === 'before' ? { top: -offset, margin: 0 } : { bottom: -offset, margin: 0 }}
+      aria-hidden
+    />
   )
 }
 
@@ -268,6 +302,9 @@ export default function RecipeForm({
       steps: prev.steps.map((row, i) => (i === idx ? { ...row, instruction } : row))
     }))
   }
+
+  const ingredientDrag = useDragReorder(form.ingredients, (next) => update({ ingredients: next }))
+  const stepDrag = useDragReorder(form.steps, (next) => update({ steps: next }))
 
   const ingredientsSectioned = hasSections(form.ingredients)
   const stepsSectioned = hasSections(form.steps)
@@ -565,9 +602,10 @@ export default function RecipeForm({
         </div>
 
         <div
-          className="hidden md:grid grid-cols-[minmax(0,1fr)_5.5rem_6.5rem_2.75rem] gap-2.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-stone-400"
+          className="hidden md:grid grid-cols-[2rem_minmax(0,1fr)_5.5rem_6.5rem_2.75rem] gap-2.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-stone-400"
           aria-hidden
         >
+          <span className="sr-only">Sposta</span>
           <span>Nome</span>
           <span>Qty</span>
           <span>Unità</span>
@@ -589,10 +627,23 @@ export default function RecipeForm({
                 onClear={() => update({ ingredients: renameRun(form.ingredients, idx, '') })}
               />
             )}
-            <div>
+            <div
+              ref={ingredientDrag.rowRef(idx)}
+              style={ingredientDrag.rowStyle(idx)}
+              className={`relative rounded-xl ${
+                ingredientDrag.isDragging(idx) ? 'bg-white shadow-xl ring-1 ring-primary/30' : ''
+              }`}
+            >
+              <DropLine edge={ingredientDrag.indicator(idx)} />
               {/* Mobile stacked */}
               <div className="md:hidden rounded-xl border border-stone-100 bg-stone-50/50 p-2.5 space-y-2">
-                <div className="flex items-start gap-2">
+                <div className="flex items-start gap-1.5">
+                  <DragHandle
+                    {...ingredientDrag.handleProps(idx)}
+                    className="-ml-1"
+                    disabled={form.ingredients.length < 2}
+                    label={`Sposta ingrediente ${idx + 1}`}
+                  />
                   <input
                     className="input-field flex-1 min-w-0"
                     placeholder="Nome ingrediente"
@@ -635,7 +686,12 @@ export default function RecipeForm({
               </div>
 
               {/* Desktop: explicit 4-column grid (no display:contents) */}
-              <div className="hidden md:grid grid-cols-[minmax(0,1fr)_5.5rem_6.5rem_2.75rem] gap-2.5 items-center py-2 border-b border-stone-100">
+              <div className="hidden md:grid grid-cols-[2rem_minmax(0,1fr)_5.5rem_6.5rem_2.75rem] gap-2.5 items-center py-2 border-b border-stone-100">
+                <DragHandle
+                  {...ingredientDrag.handleProps(idx)}
+                  disabled={form.ingredients.length < 2}
+                  label={`Sposta ingrediente ${idx + 1}`}
+                />
                 <input
                   className="input-field !min-h-[44px] !py-2 min-w-0 !w-full"
                   placeholder="Nome ingrediente"
@@ -726,11 +782,25 @@ export default function RecipeForm({
                 onClear={() => update({ steps: renameRun(form.steps, idx, '') })}
               />
             )}
-            <div className="rounded-xl border border-stone-100 bg-stone-50/40 p-3 lg:p-4 space-y-2">
+            <div
+              ref={stepDrag.rowRef(idx)}
+              style={stepDrag.rowStyle(idx)}
+              className={`relative rounded-xl border border-stone-100 p-3 lg:p-4 space-y-2 ${
+                stepDrag.isDragging(idx) ? 'bg-white shadow-xl ring-1 ring-primary/30' : 'bg-stone-50/40'
+              }`}
+            >
               <div className="flex items-center justify-between gap-2">
-                <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-primary/10 text-primary text-xs font-semibold">
-                  {idx + 1}
-                </span>
+                <div className="flex items-center gap-1">
+                  <DragHandle
+                    {...stepDrag.handleProps(idx)}
+                    className="-ml-1.5"
+                    disabled={form.steps.length < 2}
+                    label={`Sposta passo ${idx + 1}`}
+                  />
+                  <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-primary/10 text-primary text-xs font-semibold">
+                    {idx + 1}
+                  </span>
+                </div>
                 <button
                   type="button"
                   className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded-lg text-stone-400 hover:text-red-600 hover:bg-red-50"
@@ -751,6 +821,7 @@ export default function RecipeForm({
                 onChange={(e) => setStep(idx, e.target.value)}
                 aria-label={`Passo ${idx + 1}`}
               />
+              <DropLine edge={stepDrag.indicator(idx)} offset={8} />
             </div>
             </Fragment>
           ))}

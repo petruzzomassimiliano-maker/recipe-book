@@ -67,6 +67,30 @@ export function insertIntoRun(items, startIndex, newItem) {
   return next
 }
 
+/**
+ * Move item `from` so it is inserted before original index `insertAt` (0..length)
+ * and adopts `section`. Returns the same array when nothing changes.
+ */
+export function moveItem(items, from, insertAt, section) {
+  if (from < 0 || from >= items.length) return items
+  const at = insertAt > from ? insertAt - 1 : insertAt
+  if (at === from && sectionOf(items[from]) === String(section || '').trim()) return items
+  const next = [...items]
+  const [item] = next.splice(from, 1)
+  next.splice(Math.max(0, Math.min(at, next.length)), 0, applySection(item, section))
+  return next
+}
+
+/** Arrow-key move: crossing a section boundary first changes section, then position. */
+export function moveItemByStep(items, from, direction) {
+  const neighbor = from + direction
+  if (neighbor < 0 || neighbor >= items.length) return items
+  const own = sectionOf(items[from])
+  const other = sectionOf(items[neighbor])
+  if (own !== other) return moveItem(items, from, from, other)
+  return moveItem(items, from, direction < 0 ? neighbor : neighbor + 1, own)
+}
+
 /** Next default name like "Sezione 3" that is not already used. */
 export function nextSectionName(items) {
   const used = new Set((items || []).map(sectionOf).filter(Boolean))
