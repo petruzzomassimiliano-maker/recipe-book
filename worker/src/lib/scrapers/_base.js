@@ -4,7 +4,7 @@
 
 // Longer tokens first so "gr" wins over "g", "cucchiaino" over "cucchiaio"
 const UNIT_PATTERN =
-  'cucchiaino|cucchiaini|cucchiaio|cucchiai|bustina|bustine|pizzico|pizzichi|confezione|confezioni|mazzetto|mazzetti|rametto|rametti|spicchio|spicchi|fetta|fette|pezzo|pezzi|gr|kg|mg|ml|cl|dl|lt|litro|litri|oz|lb|tsp|tbsp|g|l'
+  'cucchiaino|cucchiaini|cucchiaio|cucchiai|bustina|bustine|pizzico|pizzichi|confezione|confezioni|mazzetto|mazzetti|rametto|rametti|spicchio|spicchi|fetta|fette|pezzo|pezzi|bicchiere|bicchieri|tazzina|tazzine|tazza|tazze|manciata|manciate|cups|cup|gr|kg|mg|ml|cl|dl|lt|litro|litri|oz|lbs|lb|tsp|tbsp|g|l'
 
 export function decodeHtmlEntities(text) {
   if (!text) return ''
@@ -186,6 +186,14 @@ export function coerceQuantity(value) {
   const s = String(value).trim()
   if (!s) return null
   if (/^q\.?\s*b\.?$/i.test(s) || /^qb$/i.test(s)) return 'q.b.'
+  // Range "5 – 6" / "1-2" stays text (normalized "5-6"); scaling and nutrition read it.
+  const range = s.match(/^(\d+(?:[.,]\d+)?)\s*[-–—]\s*(\d+(?:[.,]\d+)?)$/)
+  if (range) return `${range[1]}-${range[2]}`
+  const mixed = s.match(/^(\d+)\s+(\d+)\s*\/\s*(\d+)$/)
+  if (mixed) {
+    const n = Number(mixed[1]) + Number(mixed[2]) / Number(mixed[3])
+    return Number.isFinite(n) ? n : s
+  }
   const frac = s.match(/^(\d+)\s*\/\s*(\d+)$/)
   if (frac) {
     const n = Number(frac[1]) / Number(frac[2])
@@ -212,7 +220,9 @@ function normalizeUnit(unit) {
 }
 
 function qtyToken() {
-  return '([\\d½¼¾⅓⅔]+(?:[.,]\\d+)?(?:\\s*\\/\\s*\\d+)?)'
+  const single = '(?:\\d+\\s+\\d+\\s*\\/\\s*\\d+|[\\d½¼¾⅓⅔]+(?:[.,]\\d+)?(?:\\s*\\/\\s*\\d+)?)'
+  // "5 – 6" range; first number never "0"/"00" so "farina 00 - 300 g" is not a range
+  return `((?!0+\\b)${single}\\s*[-–—]\\s*\\d+(?:[.,]\\d+)?(?![\\d\\/])|${single})`
 }
 
 /** Italian number words → quantity */
@@ -246,11 +256,62 @@ function wordToQuantity(word) {
   return WORD_QTY_MAP[key] ?? null
 }
 
-/** Move trailing "(note)" into notes field when useful. */
+function cleanParenNote(inner) {
+  return String(inner || '')
+    .replace(/^[\s,;]+/, '')
+    .replace(/^\(([^()]*)\)$/, '$1')
+    .trim()
+}
+
+/** Index of the "(" matching the ")" at `close`, or -1 (balanced, handles nesting). */
+function matchingOpen(s, close) {
+  let depth = 0
+  for (let i = close; i >= 0; i--) {
+    if (s[i] === ')') depth++
+    else if (s[i] === '(' && --depth === 0) return i
+  }
+  return -1
+}
+
+function matchingClose(s, open) {
+  let depth = 0
+  for (let i = open; i < s.length; i++) {
+    if (s[i] === '(') depth++
+    else if (s[i] === ')' && --depth === 0) return i
+  }
+  return -1
+}
+
+/**
+ * Move leading / trailing "(note)" groups into notes:
+ * "burro fuso (oppure olio di semi)", "beef mince ((ground beef) (Note 1))",
+ * "(tightly packed) mozzarella cheese".
+ */
 function splitTrailingParenNotes(name) {
-  const m = String(name || '').match(/^(.+?)\s*\(([^)]+)\)\s*$/)
-  if (!m) return { name: String(name || '').trim(), notes: '' }
-  return { name: m[1].trim(), notes: m[2].trim() }
+  let s = String(name || '').trim()
+  const notes = []
+  if (s.startsWith('(')) {
+    const close = matchingClose(s, 0)
+    if (close > 0 && s.slice(close + 1).trim()) {
+      notes.push(cleanParenNote(s.slice(1, close)))
+      s = s.slice(close + 1).trim()
+    }
+  }
+  const trailing = []
+  while (s.endsWith(')')) {
+    const open = matchingOpen(s, s.length - 1)
+    if (open <= 0 || !s.slice(0, open).trim()) break
+    trailing.unshift(cleanParenNote(s.slice(open + 1, -1)))
+    s = s.slice(0, open).trim()
+  }
+  return { name: s, notes: [...notes, ...trailing].filter(Boolean).join('; ') }
+}
+
+const UNIT_ADJECTIVE_RE =
+  /^(abbondant[ei]|scars[oaie]|ras[oaie]|colm[oaie]|generos[oaie]|pien[oaie]|heaping|heaped|rounded|level|scant)\s+(?:di\s+|of\s+)?(.+)$/i
+
+function joinNotes(...parts) {
+  return parts.map((p) => String(p || '').trim()).filter(Boolean).join(' — ')
 }
 
 function withOptionalNotes(base) {
@@ -283,9 +344,44 @@ export function parseIngredientLine(line) {
     .trim()
     // typo seen on some sites: farina'0 → farina 00
     .replace(/farina['’]0\b/gi, 'farina 00')
+    // "farina '00" / "farina di grano tenero ‘00" → "… 00"
+    .replace(/\b(farina\b[^,()]*?)\s+['’‘](0{1,2})(?!\d)/gi, '$1 $2')
+    // WP Recipe Maker notes: "(, finely chopped)"
+    .replace(/\(\s*,\s*/g, '(')
+  if (!raw) return null
 
   const unit = UNIT_PATTERN
   const qty = qtyToken()
+  const extraNotes = []
+
+  // Alternative measure: "1 kg / 2 lb beef mince", "60g / 4 tbsp butter", "350g/ 12 oz sheets"
+  const qtyGroup = `(?:${qty.slice(1, -1)})`
+  const alt = raw.match(
+    new RegExp(
+      `^(${qtyGroup})\\s*(${unit})\\.?\\s*\\/\\s*(${qtyGroup}\\s*(?:${unit})\\.?)(?![a-zà-ÿ])\\s*(.+)$`,
+      'iu'
+    )
+  )
+  if (alt) {
+    raw = `${alt[1]} ${alt[2]} ${alt[4]}`
+    extraNotes.push(alt[3].trim())
+  }
+
+  const parsed = parseIngredientCore(raw, unit, qty)
+  if (!parsed) return null
+
+  if (parsed.unit) {
+    const adj = parsed.name.match(UNIT_ADJECTIVE_RE)
+    if (adj) {
+      parsed.name = adj[2].trim()
+      extraNotes.unshift(adj[1].toLowerCase())
+    }
+  }
+  if (extraNotes.length) parsed.notes = joinNotes(...extraNotes, parsed.notes)
+  return parsed
+}
+
+function parseIngredientCore(raw, unit, qty) {
 
   // "Sale q.b." / "Olio extravergine q.b."
   let m = raw.match(/^(.+?)\s+q\.?\s*b\.?$/iu)
@@ -314,9 +410,23 @@ export function parseIngredientLine(line) {
 
   // GENERAL — name + qty + unit + optional trailing descriptors/notes:
   // "piselli 300 g freschi o surgelati", "Farina Manitoba 200 g", "zucchero 1 cucchiaio raso"
-  m = raw.match(new RegExp(`^(.+?)\\s+${qty}\\s*(${unit})\\.?\\s*(.*)$`, 'iu'))
-  if (m) {
-    const namePart = m[1].trim()
+  // Middle "(…)" is removed first so "Savoiardi (circa 42 pezzi) 350 g" keeps 350 g, not 42 pezzi.
+  const generalRe = new RegExp(`^(.+?)\\s+${qty}\\s*(${unit})\\.?(?![a-zà-ÿ])\\s*(.*)$`, 'iu')
+  const middleParens = []
+  const withoutMiddleParens = raw
+    .replace(/\s*\(([^()]*)\)(?=.*\S)/g, (_, inner) => {
+      middleParens.push(cleanParenNote(inner))
+      return ''
+    })
+    .trim()
+  const generalCandidates = withoutMiddleParens !== raw
+    ? [[withoutMiddleParens, middleParens], [raw, []]]
+    : [[raw, []]]
+  for (const [text, parenNotes] of generalCandidates) {
+    m = text.match(generalRe)
+    if (!m) continue
+    const namePart = m[1].trim().replace(/\s*[-–—,]$/, '')
+    if ((namePart.match(/\(/g) || []).length !== (namePart.match(/\)/g) || []).length) continue
     const restClean = String(m[4] || '')
       .trim()
       .replace(/^[–—\-]\s*/, '')
@@ -329,8 +439,7 @@ export function parseIngredientLine(line) {
         unit: normalizeUnit(m[3]),
         notes: ''
       })
-      const notes = [base.notes, restClean].filter(Boolean).join(' — ')
-      return { ...base, notes }
+      return { ...base, notes: joinNotes(...parenNotes, base.notes, restClean) }
     }
   }
 
@@ -357,21 +466,47 @@ export function parseIngredientLine(line) {
     const qRaw = String(m[2]).trim()
     const quantity = coerceQuantity(qRaw)
     const flourType = /^(0|00)$/.test(qRaw)
+    const isRange = typeof quantity === 'string' && /^\d+(?:\.\d+)?-\d+(?:\.\d+)?$/.test(quantity)
     const n = typeof quantity === 'number' ? quantity : null
     if (
       namePart &&
       !flourType &&
       !/^\d/.test(namePart) &&
-      n != null &&
-      n > 0 &&
-      n <= 100
+      (isRange || (n != null && n > 0 && n <= 100))
     ) {
       return withOptionalNotes({
         name: namePart,
-        quantity: n,
+        quantity,
         unit: '',
         notes: ''
       })
+    }
+  }
+
+  // Name, bare count, short descriptor: "Uova 2 grandi", "Tuorli 6 (di uova medie)".
+  // Not after "tipo"/"n." ("Farina tipo 1 integrale") and never a flour grade "00".
+  m = raw.match(new RegExp(`^(.+?)\\s+${qty}\\s+(.+)$`, 'iu'))
+  if (m) {
+    const namePart = m[1].trim()
+    const qRaw = String(m[2]).trim()
+    const rest = m[3].trim()
+    const restSplit = splitTrailingParenNotes(rest)
+    const quantity = coerceQuantity(qRaw)
+    const countLike =
+      (typeof quantity === 'number' && quantity > 0 && quantity <= 100) ||
+      (typeof quantity === 'string' && /^\d+-\d+$/.test(quantity))
+    if (
+      countLike &&
+      !/^0/.test(qRaw) &&
+      !/^\d/.test(namePart) &&
+      !/(?:^|\s)(tipo|type|n\.?|nr\.?|numero|no\.?|di|da|del|della|dei|delle|con|per|of|from|with)$/i.test(namePart) &&
+      (/^\(/.test(rest) || (restSplit.name.split(/\s+/).length <= 3 && !/\d/.test(restSplit.name)))
+    ) {
+      const base = withOptionalNotes({ name: namePart, quantity, unit: '', notes: '' })
+      const restNotes = /^\(/.test(rest)
+        ? cleanParenNote(rest.replace(/^\((.*)\)$/, '$1'))
+        : [restSplit.name, restSplit.notes].filter(Boolean).join('; ')
+      return { ...base, notes: joinNotes(base.notes, restNotes) }
     }
   }
 
@@ -418,6 +553,26 @@ export function parseIngredientLine(line) {
   }
 
   return withOptionalNotes({ name: raw, quantity: null, unit: '', notes: '' })
+}
+
+const COUNTABLE_NAME_RE =
+  /\b(uov[ao]|tuorl|album|savoiard|biscott|amaretti|mandorl|nocciol|noci\b|pinoli|pistacch|olive|pomodorin|ciliegin|acini|foglie|gamber|cozze|vongole|capesante|polpett|ravioli|tortellini|fett[ae]|pezz|eggs?\b|yolks?\b|whites?\b|cookies?\b|almonds?\b|olives?\b|leaves\b|shrimps?\b|prawns?\b)/i
+
+/**
+ * Some sites drop the unit ("200 burro", "300 fecola"). When the recipe already
+ * weighs in grams, a bare quantity ≥ 50 on a non-countable item is grams.
+ */
+export function inferMissingGrams(ingredients) {
+  const list = ingredients || []
+  const withUnit = list.filter((i) => String(i?.unit || '').trim())
+  const grams = withUnit.filter((i) => /^(g|gr|kg)$/i.test(String(i.unit).trim()))
+  if (!grams.length || grams.length < withUnit.length / 2) return list
+  return list.map((ing) => {
+    if (String(ing?.unit || '').trim()) return ing
+    if (typeof ing?.quantity !== 'number' || ing.quantity < 50) return ing
+    if (COUNTABLE_NAME_RE.test(String(ing.name || ''))) return ing
+    return { ...ing, unit: 'g' }
+  })
 }
 
 /**

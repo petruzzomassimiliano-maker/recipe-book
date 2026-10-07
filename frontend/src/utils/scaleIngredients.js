@@ -19,6 +19,12 @@ export function scaleQuantity(quantity, factor) {
     const s = quantity.trim()
     if (!s) return quantity
     if (/^q\.?\s*b\.?$/i.test(s) || /^qb$/i.test(s)) return 'q.b.'
+    const range = s.match(/^(\d+(?:[.,]\d+)?)\s*[-–—]\s*(\d+(?:[.,]\d+)?)$/)
+    if (range) {
+      const a = roundNice(Number(range[1].replace(',', '.')) * factor)
+      const b = roundNice(Number(range[2].replace(',', '.')) * factor)
+      return a === b ? a : `${a}-${b}`
+    }
     const asNum = Number(s.replace(',', '.'))
     if (!Number.isFinite(asNum)) return quantity
     return roundNice(asNum * factor)

@@ -2,6 +2,7 @@ import {
   asArray,
   emptyDraft,
   firstImage,
+  inferMissingGrams,
   parseDurationMinutes,
   resolveRecipeYield,
   stripTags
@@ -74,7 +75,7 @@ export function parseJsonLdRecipe(html, sourceUrl) {
     }
   }
   draft.ingredients = applyHtmlIngredientSections(
-    ingredientsFromJsonLd(recipe.recipeIngredient),
+    inferMissingGrams(ingredientsFromJsonLd(recipe.recipeIngredient)),
     html
   )
   draft.steps = stepsFromJsonLd(recipe.recipeInstructions)

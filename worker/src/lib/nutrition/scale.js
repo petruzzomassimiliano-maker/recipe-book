@@ -68,8 +68,17 @@ function normalizeUnit(unit) {
 /**
  * @returns {{ grams: number|null, skipped: boolean, reason?: string }}
  */
+/** Number, or the midpoint of a "5-6" range. */
+function quantityNumber(quantity) {
+  const range = String(quantity ?? '').match(/^\s*(\d+(?:[.,]\d+)?)\s*[-–—]\s*(\d+(?:[.,]\d+)?)\s*$/)
+  if (range) {
+    return (Number(range[1].replace(',', '.')) + Number(range[2].replace(',', '.'))) / 2
+  }
+  return Number(quantity)
+}
+
 export function ingredientToGrams(ingredient, matchedKey = '') {
-  const qty = Number(ingredient?.quantity)
+  const qty = quantityNumber(ingredient?.quantity)
   const unit = normalizeUnit(ingredient?.unit)
   const nameKey = String(matchedKey || ingredient?.name || '')
     .toLowerCase()
