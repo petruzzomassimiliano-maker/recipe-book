@@ -928,6 +928,27 @@ UI: durante l’import YouTube compare «Se il video non ha sottotitoli l’IA l
 | `frontend/src/utils/recipeSections.js` | **Modificato** — `moveItem`, `moveItemByStep` |
 | `frontend/src/components/recipe/RecipeForm.jsx` | **Modificato** — `DragHandle`, `DropLine`, maniglie su ingredienti e passi |
 
+### Fix follow-up (2026-10-07) — righe ingrediente lette male
+Parser `parseIngredientLine` (`worker/src/lib/scrapers/_base.js`), usato da JSON-LD, euristico e Gemini:
+
+| Riga sorgente | Prima | Ora |
+|---------------|-------|-----|
+| `5 – 6 pomodorini` | 5 · «– 6 pomodorini» | **"5-6"** · pomodorini |
+| `2 cucchiaini abbondanti di lievito…` | nome «abbondanti di lievito…» | lievito… · nota «abbondanti» (anche rasi/colmi/scarsi) |
+| `200 gr di farina '00` / `farina ‘0` | «farina '00» | farina 00 / farina 0 |
+| `Savoiardi (circa 42 pezzi) 350 g` | 42 pezzi · «Savoiardi (circa» | 350 g · Savoiardi · nota «circa 42 pezzi» |
+| `scorza di 1 limone`, `Uova 2 grandi` | «1 l · imone», «2 g · andi» (bug: unità senza confine di parola) | scorza di limone ×1 · Uova ×2 nota «grandi» |
+| `Zucchine 2 medie (circa 400 g)` | 400 g · «Zucchine 2 medie (circa» | 2 · Zucchine · «medie; circa 400 g» |
+| `1 kg / 2 lb beef`, `60g / 4 tbsp butter` | nome «/ 2 lb beef» | 1 kg · beef · nota «2 lb» |
+| `1 1/2 cups (tightly packed) mozzarella (, shred)` | non letta | 1.5 cups · mozzarella · note |
+| `200 burro` (Perugina scrive senza unità) | 200 · burro | **200 g** se la ricetta usa già grammi e l’ingrediente non è contabile (`inferMissingGrams`) |
+
+- Nuove unità: bicchiere, tazza/tazzina, manciata, cup/cups, lbs.
+- Note tra parentesi: gestione **bilanciata** (parentesi annidate, iniziali e finali; via la virgola WPRM “(, …)”).
+- Intervalli salvati come testo `"5-6"` (già ammesso dal backend): **scalano** con le porzioni (`scaleIngredients.js` → `10-12`) e nel calcolo nutrizionale valgono la **media** (`nutrition/scale.js`).
+- Verifica: 70 righe di confronto vecchio/nuovo — 32 cambiate, tutte in meglio, nessuna peggiorata; pagine Tavolartegusto, GialloZafferano, Perugina, RecipeTinEats ricontrollate (sezioni invariate).
+- Limite: Tavolartegusto Lasagne ha nel JSON-LD la riga unita «2 uova intere grandi sale q.b.» (errore del sito): resta una riga sola.
+
 ### Todo / note
 - [ ] I passi Tavolartegusto hanno `HowToStep.name` (“Come fare…”, “cottura…”): non usati come sezioni (un titolo per ogni singolo passo sarebbe rumore)
 - [ ] Il parser euristico (siti senza JSON-LD) non usa ancora `htmlListGroups`
