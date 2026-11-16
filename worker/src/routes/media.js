@@ -1,6 +1,5 @@
 import { Hono } from 'hono'
-import { DropboxClient } from '../lib/dropboxClient.js'
-import { authMiddleware } from '../middleware/auth.js'
+import { editorMiddleware } from '../middleware/auth.js'
 import { getFamilyDropboxClient } from '../lib/familyDropbox.js'
 
 const media = new Hono()
@@ -70,7 +69,7 @@ media.get('/:file', async (c) => {
  * Body JSON: { imageBase64, mimeType? }
  * Returns: { data: { imageUrl, fileName, path } }
  */
-media.post('/', authMiddleware, async (c) => {
+media.post('/', ...editorMiddleware, async (c) => {
   try {
     const body = await c.req.json().catch(() => ({}))
     let imageBase64 = String(body.imageBase64 || body.image || '').trim()
@@ -94,7 +93,7 @@ media.post('/', authMiddleware, async (c) => {
     const fileName = `${randomId()}.${ext}`
     const path = `/recipes/images/${fileName}`
 
-    const client = new DropboxClient(c.get('dropboxToken'))
+    const client = c.get('dbx')
     await client.createFolderIfNotExists('/recipes/images')
     await client.uploadBinary(path, bytes)
 

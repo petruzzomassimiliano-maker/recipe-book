@@ -8,5 +8,7 @@ GEMINI_API_KEY=your_gemini_api_key_here
 # Optional second account — used automatically if the first hits quota/429
 GEMINI_API_KEY_2=your_second_gemini_api_key_here
 JWT_SECRET=dev-secret-change-me-in-prod-min-32-chars
-# After first family setup, paste the refresh token shown in the UI:
+# Dropbox refresh token of the family App folder (same as production secret):
 # FAMILY_DROPBOX_REFRESH_TOKEN=
+# Family PIN: without it the site is read-only
+EDIT_PIN=change-me

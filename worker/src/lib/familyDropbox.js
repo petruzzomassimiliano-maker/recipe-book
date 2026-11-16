@@ -1,9 +1,8 @@
 /**
- * Family Dropbox access — refresh token lives in Worker env (and optional Dropbox backup).
+ * Family Dropbox access — refresh token lives in the Worker secret FAMILY_DROPBOX_REFRESH_TOKEN.
  */
 
 import { DropboxClient } from './dropboxClient.js'
-import { FAMILY_AUTH_PATH } from './users.js'
 
 const g = globalThis
 if (!g.__recipeBookFamilyDbx) {
@@ -12,10 +11,6 @@ if (!g.__recipeBookFamilyDbx) {
 
 function cache() {
   return g.__recipeBookFamilyDbx
-}
-
-export function setFamilyRefreshTokenRuntime(refreshToken) {
-  if (refreshToken) cache().refreshToken = refreshToken
 }
 
 export function getConfiguredFamilyRefreshToken(env) {
@@ -61,7 +56,7 @@ export async function getFamilyAccessToken(env) {
   const refresh = getConfiguredFamilyRefreshToken(env)
   if (!refresh) {
     const err = new Error(
-      'Dropbox famiglia non configurato. Completa il setup o imposta FAMILY_DROPBOX_REFRESH_TOKEN.'
+      'Dropbox famiglia non configurato: imposta il secret FAMILY_DROPBOX_REFRESH_TOKEN del Worker.'
     )
     err.code = 'FAMILY_DROPBOX_NOT_CONFIGURED'
     err.status = 503
@@ -72,17 +67,15 @@ export async function getFamilyAccessToken(env) {
 
 export async function getFamilyDropboxClient(env) {
   const accessToken = await getFamilyAccessToken(env)
-  return new DropboxClient(accessToken)
-}
-
-export async function persistFamilyAuthBackup(accessToken, refreshToken) {
-  if (!accessToken || !refreshToken) return
-  const dbx = new DropboxClient(accessToken)
-  await dbx.createFolderIfNotExists('/users')
-  await dbx.writeJSON(FAMILY_AUTH_PATH, {
-    refreshToken,
-    updatedAt: new Date().toISOString()
-  })
+  const client = new DropboxClient(accessToken)
+  // Token revoked/expired early → drop the cached one so the next request refreshes
+  client.onAuthFailure = () => {
+    if (cache().accessToken === accessToken) {
+      cache().accessToken = null
+      cache().expiresAt = 0
+    }
+  }
+  return client
 }
 
 export function hasFamilyDropboxConfigured(env) {

@@ -50,6 +50,13 @@ export function scaleIngredients(ingredients, baseServings, targetServings) {
 }
 
 export function formatScaledQty(quantity, unit) {
-  const parts = [quantity, unit].filter((v) => v != null && v !== '')
+  // Italian decimals: 0.5 → "0,5" (also inside ranges like "1.5-2")
+  const qty =
+    typeof quantity === 'number'
+      ? String(quantity).replace('.', ',')
+      : typeof quantity === 'string'
+        ? quantity.replace(/(\d)\.(\d)/g, '$1,$2')
+        : quantity
+  const parts = [qty, unit].filter((v) => v != null && v !== '')
   return parts.length ? parts.join(' ') : null
 }

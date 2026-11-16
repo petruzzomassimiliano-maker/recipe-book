@@ -1,8 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
-import { useAuth } from '../../hooks/useAuth.js'
 import { useDragReorder } from '../../hooks/useDragReorder.js'
 import { useSessionDraft } from '../../hooks/useSessionDraft.js'
-import { listUsers } from '../../services/users.js'
 import { readAndCompressImage, uploadRecipeImage } from '../../services/media.js'
 import {
   hasSections,
@@ -81,14 +79,6 @@ function DropLine({ edge, offset = 6 }) {
   )
 }
 
-function authorUserIdFromRecipe(recipe) {
-  const author = recipe?.author
-  if (typeof author === 'string' && author.startsWith('user-')) {
-    return author.slice(5)
-  }
-  return null
-}
-
 function AutoGrowTextarea({ value, onChange, className = '', minPx = 44, ...props }) {
   const ref = useRef(null)
 
@@ -111,7 +101,7 @@ function AutoGrowTextarea({ value, onChange, className = '', minPx = 44, ...prop
   )
 }
 
-function fromRecipe(recipe, defaultAssignToUserId) {
+function fromRecipe(recipe) {
   if (!recipe) {
     return {
       title: '',
@@ -122,9 +112,7 @@ function fromRecipe(recipe, defaultAssignToUserId) {
       cuisine: '',
       tags: '',
       notes: '',
-      isPrivate: false,
       imageUrl: '',
-      assignToUserId: defaultAssignToUserId || '',
       ingredients: [emptyIngredient()],
       steps: [emptyStep()]
     }
@@ -138,9 +126,7 @@ function fromRecipe(recipe, defaultAssignToUserId) {
     cuisine: recipe.metadata?.cuisine || '',
     tags: (recipe.metadata?.tags || []).join(', '),
     notes: recipe.notes || '',
-    isPrivate: !!recipe.metadata?.isPrivate || recipe.metadata?.isShared === false,
     imageUrl: recipe.imageUrl || '',
-    assignToUserId: authorUserIdFromRecipe(recipe) || defaultAssignToUserId || '',
     ingredients: recipe.ingredients?.length
       ? recipe.ingredients.map((i) =>
           withOptionalSection(
@@ -187,12 +173,7 @@ export default function RecipeForm({
   persistKey = null,
   pageTitle = null
 }) {
-  const { user, isStaff } = useAuth()
-  const myId = user?.id || user?.userId || ''
-  const getInitial = useCallback(
-    () => fromRecipe(initialRecipe, myId),
-    [initialRecipe, myId]
-  )
+  const getInitial = useCallback(() => fromRecipe(initialRecipe), [initialRecipe])
   const {
     value: form,
     setValue: setForm,
@@ -201,37 +182,10 @@ export default function RecipeForm({
     discardRestored
   } = useSessionDraft(persistKey, getInitial)
 
-  const [familyUsers, setFamilyUsers] = useState([])
-  const [usersError, setUsersError] = useState(null)
   const [imageBusy, setImageBusy] = useState(false)
   const [imageError, setImageError] = useState(null)
   const fileInputRef = useRef(null)
   const cameraInputRef = useRef(null)
-
-  useEffect(() => {
-    if (!isStaff) return
-    let cancelled = false
-    listUsers()
-      .then((res) => {
-        if (cancelled) return
-        const active = (res.data || []).filter((u) => u.active !== false)
-        setFamilyUsers(active)
-        setUsersError(null)
-      })
-      .catch((err) => {
-        if (cancelled) return
-        setUsersError(err.message || 'Impossibile caricare gli utenti')
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [isStaff])
-
-  useEffect(() => {
-    if (!isStaff || !myId) return
-    if (form.assignToUserId) return
-    setForm((prev) => ({ ...prev, assignToUserId: myId }))
-  }, [isStaff, myId, form.assignToUserId, setForm])
 
   const update = (patch) => setForm((prev) => ({ ...prev, ...patch }))
 
@@ -274,12 +228,9 @@ export default function RecipeForm({
         cuisine: form.cuisine,
         tags: form.tags,
         notes: form.notes,
-        isPrivate: form.isPrivate,
-        isShared: !form.isPrivate,
         imageUrl: form.imageUrl.trim() || null,
         ingredients: form.ingredients,
-        steps: form.steps,
-        ...(isStaff && form.assignToUserId ? { assignToUserId: form.assignToUserId } : {})
+        steps: form.steps
       })
       clear()
     } catch (err) {
@@ -372,42 +323,6 @@ export default function RecipeForm({
                 required
               />
             </label>
-
-            {isStaff && (
-              <label className="block">
-                <span className={fieldLabelClass}>Assegna a</span>
-                <select
-                  className="input-field mt-1.5"
-                  value={form.assignToUserId || myId}
-                  onChange={(e) => update({ assignToUserId: e.target.value })}
-                >
-                  {familyUsers.length === 0 ? (
-                    <option value={myId}>
-                      {user?.displayName || user?.name || user?.username || 'Me'}
-                    </option>
-                  ) : (
-                    <>
-                      {familyUsers.map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.displayName || u.username}
-                          {u.id === myId ? ' (tu)' : ''}
-                        </option>
-                      ))}
-                      {form.assignToUserId &&
-                        !familyUsers.some((u) => u.id === form.assignToUserId) && (
-                          <option value={form.assignToUserId}>
-                            {initialRecipe?.authorDisplayName || 'Utente attuale'}
-                          </option>
-                        )}
-                    </>
-                  )}
-                </select>
-                {usersError && <span className="mt-1 block text-xs text-amber-700">{usersError}</span>}
-                <span className="mt-1 block text-xs text-stone-500">
-                  Solo owner e admin possono scegliere a chi assegnare la ricetta.
-                </span>
-              </label>
-            )}
 
             {/* Related meta — 2×2 on narrow, 4 across on desktop */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 lg:gap-4">
@@ -839,15 +754,6 @@ export default function RecipeForm({
           placeholder="Consigli, varianti, allergie…"
           aria-label="Note"
         />
-        <label className="flex items-center gap-2.5 min-h-[44px] cursor-pointer select-none">
-          <input
-            type="checkbox"
-            className="w-4 h-4 rounded border-stone-300 text-primary focus:ring-primary/30"
-            checked={!!form.isPrivate}
-            onChange={(e) => update({ isPrivate: e.target.checked })}
-          />
-          <span className="text-sm text-stone-700">Privata (solo tu e lo staff)</span>
-        </label>
       </section>
 
       {/* Mobile sticky actions — desktop uses top bar + this as secondary */}

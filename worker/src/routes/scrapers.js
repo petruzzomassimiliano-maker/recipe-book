@@ -1,9 +1,10 @@
 import { Hono } from 'hono'
-import { authMiddleware } from '../middleware/auth.js'
+import { editorMiddleware } from '../middleware/auth.js'
 import { fetchRecipeFromUrl } from '../lib/scrapers/index.js'
 
 const scrapers = new Hono()
-scrapers.use('*', authMiddleware)
+// Gemini/scraping costs quota → PIN di famiglia richiesto
+scrapers.use('*', ...editorMiddleware)
 
 /**
  * POST /api/scraper/fetch-recipe

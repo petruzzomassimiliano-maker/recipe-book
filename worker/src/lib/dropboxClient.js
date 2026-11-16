@@ -32,6 +32,15 @@ export class DropboxClient {
     this.apiBase = 'https://api.dropboxapi.com/2'
     this.contentBase = 'https://content.dropboxapi.com/2'
     this.appFolder = '' // App folder mode: paths relative to /Apps/Recipe Book/
+    /** Optional hook (set by familyDropbox) called when Dropbox rejects the token. */
+    this.onAuthFailure = null
+  }
+
+  fail(data, context, status) {
+    if (isDropboxAuthFailure(data, status) && typeof this.onAuthFailure === 'function') {
+      this.onAuthFailure()
+    }
+    throwDropboxError(data, context, status)
   }
 
   // ── Low-level helpers ────────────────────────────────────────────────────
@@ -47,7 +56,7 @@ export class DropboxClient {
     })
     if (res.status === 409) return null // Path not found — non-fatal
     const data = await res.json().catch(() => ({}))
-    if (!res.ok) throwDropboxError(data, `Dropbox API error [${endpoint}]`, res.status)
+    if (!res.ok) this.fail(data, `Dropbox API error [${endpoint}]`, res.status)
     return data
   }
 
@@ -67,7 +76,7 @@ export class DropboxClient {
       body: typeof content === 'string' ? content : JSON.stringify(content)
     })
     const data = await res.json().catch(() => ({}))
-    if (!res.ok) throwDropboxError(data, `Dropbox upload error [${path}]`, res.status)
+    if (!res.ok) this.fail(data, `Dropbox upload error [${path}]`, res.status)
     return data
   }
 
@@ -90,7 +99,7 @@ export class DropboxClient {
       body
     })
     const data = await res.json().catch(() => ({}))
-    if (!res.ok) throwDropboxError(data, `Dropbox binary upload error [${path}]`, res.status)
+    if (!res.ok) this.fail(data, `Dropbox binary upload error [${path}]`, res.status)
     return data
   }
 
@@ -105,7 +114,7 @@ export class DropboxClient {
     if (res.status === 409) return null
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}))
-      throwDropboxError(errData, `Dropbox binary download error [${path}]`, res.status)
+      this.fail(errData, `Dropbox binary download error [${path}]`, res.status)
     }
     const buf = await res.arrayBuffer()
     let apiResult = {}
@@ -129,7 +138,7 @@ export class DropboxClient {
     if (res.status === 409) return null // File not found
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}))
-      throwDropboxError(errData, `Dropbox download error [${path}]`, res.status)
+      this.fail(errData, `Dropbox download error [${path}]`, res.status)
     }
     return res.text()
   }
@@ -188,48 +197,6 @@ export class DropboxClient {
     return this.apiCall('/files/move_v2', { from_path: fromPath, to_path: toPath, autorename: false })
   }
 
-  // ── App initialization ───────────────────────────────────────────────────
-
-  /**
-   * Creates the full Recipe Book folder structure in Dropbox on first login.
-   * Safe to call multiple times (idempotent).
-   */
-  async initFolderStructure(userId) {
-    const folders = [
-      '/users',
-      `/users/user-${userId}`,
-      '/recipes',
-      '/recipes/images',
-      '/shopping-lists',
-      '/nutrition-cache'
-    ]
-
-    for (const folder of folders) {
-      await this.createFolderIfNotExists(folder)
-    }
-
-    // Create users.json if not exists
-    await this.createFileIfNotExists('/users/users.json', JSON.stringify([], null, 2))
-
-    // Create user profile if not exists
-    const profilePath = `/users/user-${userId}/profile.json`
-    await this.createFileIfNotExists(profilePath, JSON.stringify({
-      id: `user-${userId}`,
-      createdAt: new Date().toISOString(),
-      preferences: {
-        theme: 'auto',
-        font: 'inter',
-        language: 'it',
-        colorAccent: '#FF6B6B'
-      }
-    }, null, 2))
-
-    // Create recipes-index.json if not exists
-    await this.createFileIfNotExists('/recipes/recipes-index.json', JSON.stringify([], null, 2))
-
-    console.log(`[dropboxClient] Folder structure initialized for user-${userId}`)
-  }
-
   // ── Recipe operations ────────────────────────────────────────────────────
 
   async getRecipesIndex() {
@@ -250,30 +217,6 @@ export class DropboxClient {
 
   async deleteRecipe(recipeId) {
     return this.deleteFile(`/recipes/recipe-${recipeId}.json`)
-  }
-
-  // ── Shopping list operations ─────────────────────────────────────────────
-
-  async getShoppingList(userId) {
-    return this.readJSON(`/shopping-lists/shopping-list-${userId}.json`)
-  }
-
-  async saveShoppingList(userId, list) {
-    return this.writeJSON(`/shopping-lists/shopping-list-${userId}.json`, list)
-  }
-
-  // ── User operations ──────────────────────────────────────────────────────
-
-  async getUsers() {
-    return (await this.readJSON('/users/users.json')) || []
-  }
-
-  async getUserProfile(userId) {
-    return this.readJSON(`/users/user-${userId}/profile.json`)
-  }
-
-  async saveUserProfile(userId, profile) {
-    return this.writeJSON(`/users/user-${userId}/profile.json`, profile)
   }
 
   // ── Nutrition cache operations ───────────────────────────────────────────

@@ -35,7 +35,8 @@ export function useRecipeById(id) {
         cacheRecipe(res.data)
       } catch (err) {
         if (cancelled) return
-        const cached = getCachedRecipe(id)
+        // Serve the cached copy only when offline/server down — not for a deleted recipe
+        const cached = err.status === 404 ? null : getCachedRecipe(id)
         if (cached) {
           setRecipe(cached)
           setError(null)

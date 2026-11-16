@@ -7,18 +7,12 @@ function toIndexShape(recipe) {
   return {
     id: recipe.id,
     title: recipe.title,
-    author: recipe.author,
-    authorDisplayName: recipe.authorDisplayName || null,
     tags: recipe.metadata?.tags || recipe.tags || [],
-    isShared: recipe.metadata?.isShared ?? recipe.isShared ?? true,
-    isPrivate: recipe.metadata?.isPrivate ?? recipe.isPrivate ?? false,
-    sharedWithUserIds:
-      recipe.metadata?.sharedWithUserIds || recipe.sharedWithUserIds || [],
-    sharedWith: recipe.sharedWith || [],
     servings: recipe.metadata?.servings ?? recipe.servings,
     difficulty: recipe.metadata?.difficulty ?? recipe.difficulty,
     imageUrl: recipe.imageUrl || null,
     caloriesPerServing: recipe.nutritionInfo?.perServing?.calories ?? recipe.caloriesPerServing ?? null,
+    createdAt: recipe.createdAt || null,
     updatedAt: recipe.updatedAt
   }
 }

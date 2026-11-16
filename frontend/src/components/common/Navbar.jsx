@@ -1,6 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { useAuth } from '../../hooks/useAuth.js'
-import { useAuthStore } from '../../store/authStore.js'
+import { useAuthStore, useEditAccess } from '../../store/authStore.js'
 
 const linkClass = ({ isActive }) =>
   `inline-flex items-center min-h-[44px] text-sm font-medium px-3 py-2 rounded-lg transition-colors ${
@@ -10,9 +9,9 @@ const linkClass = ({ isActive }) =>
   }`
 
 export default function Navbar() {
-  const { user, logout } = useAuth()
   const familyAppName = useAuthStore((s) => s.familyAppName)
-  const brand = user?.preferences?.appLabel || familyAppName || 'Recipe Book'
+  const { canEdit, requestUnlock, lock } = useEditAccess()
+  const brand = familyAppName || 'Recipe Book'
 
   return (
     <header className="bg-white/75 backdrop-blur-md border-b border-stone-200/70 sticky top-0 z-20 pt-[env(safe-area-inset-top)]">
@@ -41,36 +40,32 @@ export default function Navbar() {
           <NavLink to="/recipes" className={linkClass}>
             Ricette
           </NavLink>
-          <NavLink to="/shopping-list" className={linkClass}>
-            Lista
-          </NavLink>
           <NavLink to="/settings" className={linkClass}>
             Impostazioni
           </NavLink>
         </nav>
 
-        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-          <div className="hidden sm:flex flex-col text-right">
-            <span className="text-sm font-medium text-stone-900">{user?.displayName || user?.name}</span>
-            <span className="text-xs text-stone-400">@{user?.username || user?.role}</span>
-          </div>
-          <div
-            className="hidden sm:flex w-9 h-9 rounded-full bg-gradient-to-br from-primary to-primary-dark items-center justify-center text-white font-semibold text-sm shadow-sm"
-            aria-hidden
-          >
-            {(user?.displayName || user?.username || '?')[0]?.toUpperCase()}
-          </div>
-          <button
-            id="btn-logout"
-            type="button"
-            onClick={logout}
-            className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] sm:min-w-0 text-sm text-stone-500 hover:text-stone-900 px-2.5 sm:px-3 rounded-lg hover:bg-stone-100 transition-colors"
-            aria-label="Esci"
-          >
-            <span className="sm:hidden">Esci</span>
-            <span className="hidden sm:inline">Esci</span>
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={canEdit ? lock : requestUnlock}
+          className={`inline-flex items-center gap-1.5 shrink-0 min-h-[44px] text-sm px-3 rounded-lg transition-colors ${
+            canEdit
+              ? 'text-teal-700 bg-teal-50 hover:bg-teal-100'
+              : 'text-stone-500 hover:text-stone-900 hover:bg-stone-100'
+          }`}
+          title={canEdit ? 'Modifiche sbloccate — tocca per bloccare' : 'Inserisci il PIN per modificare'}
+        >
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" strokeWidth="1.75" />
+            <path
+              d={canEdit ? 'M8 11V8a4 4 0 0 1 7.5-2' : 'M8 11V8a4 4 0 1 1 8 0v3'}
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+            />
+          </svg>
+          <span>{canEdit ? 'Blocca' : 'Modifica'}</span>
+        </button>
       </div>
     </header>
   )

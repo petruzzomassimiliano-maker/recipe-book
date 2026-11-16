@@ -1,7 +1,6 @@
 import { Hono } from 'hono'
-import { DropboxClient } from '../lib/dropboxClient.js'
 import { canViewRecipe, canEditRecipe } from '../lib/rbac.js'
-import { authMiddleware } from '../middleware/auth.js'
+import { familyMiddleware, requireEditor } from '../middleware/auth.js'
 import {
   calculateRecipeNutrition,
   loadCustomDb,
@@ -11,10 +10,11 @@ import {
 import { ingredientToGrams, scalePer100g } from '../lib/nutrition/scale.js'
 
 const nutrition = new Hono()
-nutrition.use('*', authMiddleware)
+// Lettura/calcolo liberi; salvataggi solo con PIN (vedi requireEditor / canEditRecipe)
+nutrition.use('*', familyMiddleware)
 
 function dbx(c) {
-  return new DropboxClient(c.get('dropboxToken'))
+  return c.get('dbx')
 }
 
 /**
@@ -76,7 +76,7 @@ nutrition.post('/search', async (c) => {
  * POST /api/nutrition/custom
  * Body: { name, label?, calories, protein, fat, carbs, fiber } — valori per 100 g
  */
-nutrition.post('/custom', async (c) => {
+nutrition.post('/custom', requireEditor, async (c) => {
   try {
     const body = await c.req.json()
     const name = String(body.name || body.ingredient || '').trim()

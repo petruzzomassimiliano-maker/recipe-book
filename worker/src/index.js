@@ -5,11 +5,9 @@ import authRoutes from './routes/auth.js'
 import healthRoutes from './routes/health.js'
 import recipeRoutes from './routes/recipes.js'
 import scraperRoutes from './routes/scrapers.js'
-import shoppingRoutes from './routes/shopping.js'
 import geminiRoutes from './routes/gemini.js'
 import nutritionRoutes from './routes/nutrition.js'
 import youtubeRoutes from './routes/youtube.js'
-import usersRoutes from './routes/users.js'
 import settingsRoutes from './routes/settings.js'
 import mediaRoutes from './routes/media.js'
 import { errorHandler } from './middleware/errorHandler.js'
@@ -47,11 +45,9 @@ app.route('/api/health', healthRoutes)
 app.route('/api/auth', authRoutes)
 app.route('/api/recipes', recipeRoutes)
 app.route('/api/scraper', scraperRoutes)
-app.route('/api/shopping-list', shoppingRoutes)
 app.route('/api/gemini', geminiRoutes)
 app.route('/api/nutrition', nutritionRoutes)
 app.route('/api/youtube', youtubeRoutes)
-app.route('/api/users', usersRoutes)
 app.route('/api/settings', settingsRoutes)
 app.route('/api/media', mediaRoutes)
 

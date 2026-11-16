@@ -15,5 +15,6 @@ workers_dev = false
 #   DROPBOX_REDIRECT_URI
 #   GEMINI_API_KEY
 #   GEMINI_API_KEY_2              (optional — fallback if quota ends)
-#   JWT_SECRET
-#   FAMILY_DROPBOX_REFRESH_TOKEN   (after family setup)
+#   JWT_SECRET                    (signs the editor tokens issued after the PIN)
+#   FAMILY_DROPBOX_REFRESH_TOKEN
+#   EDIT_PIN                      (family PIN that unlocks add/edit/delete/import/IA)

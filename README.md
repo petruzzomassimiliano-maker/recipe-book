@@ -1,6 +1,6 @@
 # Recipe Book
 
-Ricettario di famiglia (PWA): ricette per utente, lista spesa, import da URL/YouTube/foto, con vault su **Dropbox** e API su **Cloudflare Worker**.
+Ricettario di famiglia (PWA): **nessun account**, chiunque apra il sito vede tutte le ricette; per aggiungere/modificare/importare serve un **PIN di famiglia**. Vault su **Dropbox**, API su **Cloudflare Worker**.
 
 **Repo:** https://github.com/petruzzomassimiliano-maker/recipe-book  
 **App (prod):** https://recipe-book-ap1.pages.dev  
@@ -10,14 +10,19 @@ Ricettario di famiglia (PWA): ricette per utente, lista spesa, import da URL/You
 
 ## Cosa fa
 
-- CRUD ricette (manuali + import da sito, YouTube, foto con Gemini)
-- Porzioni scalabili, metodi cottura, nutrizione
-- Lista spesa condivisa sul vault famiglia
-- Ruoli **owner / admin / member** (JWT + RBAC)
-- Inviti monouso (link da copiare, niente email)
-- Reset/recupero password (staff + frase di recupero)
+- Consultazione libera di tutte le ricette, senza login
+- CRUD ricette (manuali + import da sito, YouTube, foto con Gemini) — **con PIN di famiglia**
+- Porzioni scalabili, metodi cottura, nutrizione, chat IA sulla ricetta (IA con PIN: consuma quota Gemini)
 - Foto ricetta da URL, fotocamera o file (salvate su Dropbox)
-- UI mobile-friendly (tab bar, liste dense, checklist spesa)
+- UI mobile-friendly (tab bar, liste dense)
+
+### PIN di famiglia
+
+- Il PIN è il secret `EDIT_PIN` del Worker: `cd worker && npx wrangler secret put EDIT_PIN`
+- Senza `EDIT_PIN` il sito è in sola lettura.
+- Inserito una volta (pulsante «Modifica» in alto), il dispositivo riceve un token valido 1 anno.
+- Cambiare `EDIT_PIN` invalida subito tutti i dispositivi sbloccati.
+- Usa un PIN lungo (es. una frase): un tentativo errato costa ~1,5 s ma non c'è un limite di tentativi.
 
 ---
 
@@ -53,20 +58,7 @@ npm run dev
 # Worker   http://localhost:8787
 ```
 
-Nella Dropbox App aggiungi redirect URI:
-
-- Locale: `http://localhost:5173/dropbox-callback`
-- Prod: `https://recipe-book-ap1.pages.dev/dropbox-callback`
-
-Al primo accesso completa il setup famiglia (owner + refresh token Dropbox). Dettagli in `RECIPE_BOOK_QUICKSTART.md`.
-
-### Script utili
-
-```bash
-# Elenco utenti / reset password owner (usa worker/.dev.vars)
-node scripts/reset-owner-password.mjs --list
-node scripts/reset-owner-password.mjs --password 'NuovaPass8+'
-```
+Dropbox si collega solo tramite il secret `FAMILY_DROPBOX_REFRESH_TOKEN` (in locale: `node scripts/set-family-dropbox-token.mjs '<token>'`). Il vecchio setup via browser è stato rimosso perché permetteva a chiunque di sostituire il Dropbox di famiglia.
 
 ---
 
@@ -82,7 +74,7 @@ SKIP_WORKER=1 npm run deploy   # solo frontend
 
 `scripts/deploy.sh` si ferma se ci sono modifiche non committate o se il push su GitHub fallisce, così la produzione non contiene mai codice assente da GitHub. Se lavori su un branch, porta anche `main` su GitHub allo stesso commit (solo fast-forward: se `main` ha commit diversi avvisa e non tocca nulla).
 
-I secret del Worker (Dropbox, JWT, Gemini, `FAMILY_DROPBOX_REFRESH_TOKEN`, …) vanno impostati con `wrangler secret put`, non nel repo.
+I secret del Worker (Dropbox, JWT, Gemini, `FAMILY_DROPBOX_REFRESH_TOKEN`, `EDIT_PIN`, …) vanno impostati con `wrangler secret put`, non nel repo.
 
 ---
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useAuth } from '../hooks/useAuth.js'
+import { useAuthStore } from '../store/authStore.js'
 import { useRecipes } from '../hooks/useRecipes.js'
 
 const difficultyLabel = {
@@ -26,8 +26,8 @@ function pickFeatured(recipes, mode, randomId) {
   }
   if (mode === 'oldest') {
     return [...recipes].sort((a, b) => {
-      const ta = Date.parse(a.updatedAt || a.createdAt || 0) || 0
-      const tb = Date.parse(b.updatedAt || b.createdAt || 0) || 0
+      const ta = Date.parse(a.createdAt || a.updatedAt || 0) || 0
+      const tb = Date.parse(b.createdAt || b.updatedAt || 0) || 0
       return ta - tb
     })[0]
   }
@@ -38,27 +38,28 @@ function pickFeatured(recipes, mode, randomId) {
 }
 
 export default function Home() {
-  const { user } = useAuth()
+  const familyAppName = useAuthStore((s) => s.familyAppName)
+  const featuredMode = useAuthStore((s) => s.featuredMode) || 'random'
   const navigate = useNavigate()
   const { recipes, loadRecipes, isLoading } = useRecipes()
   const [randomId, setRandomId] = useState(null)
 
   useEffect(() => {
-    loadRecipes()
+    // Home always works on the full list, not on the last search in /recipes
+    loadRecipes('')
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const firstName =
-    (user?.displayName || user?.name || user?.username || 'Chef').trim().split(/\s+/)[0] || 'Chef'
-
-  const featuredMode = user?.preferences?.featuredMode || 'random'
 
   useEffect(() => {
     if (featuredMode !== 'random' || !recipes?.length) {
       setRandomId(null)
       return
     }
-    const pick = recipes[Math.floor(Math.random() * recipes.length)]
-    setRandomId(pick.id)
+    // Keep the current pick when the list refreshes (cache → server), re-roll only if it vanished
+    setRandomId((prev) =>
+      prev && recipes.some((r) => r.id === prev)
+        ? prev
+        : recipes[Math.floor(Math.random() * recipes.length)].id
+    )
   }, [recipes, featuredMode])
 
   const featured = useMemo(
@@ -80,9 +81,9 @@ export default function Home() {
       accent: 'bg-orange-50 text-orange-900 border-orange-100'
     },
     {
-      label: 'Lista spesa',
-      desc: 'Ingredienti',
-      to: '/shopping-list',
+      label: 'Tutte le ricette',
+      desc: 'Sfoglia',
+      to: '/recipes',
       accent: 'bg-stone-50 text-stone-800 border-stone-200'
     }
   ]
@@ -91,7 +92,7 @@ export default function Home() {
     <main className="max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-10 animate-fade-in">
       <section className="mb-5 sm:mb-8">
         <h1 className="font-display text-2xl sm:text-4xl font-semibold text-stone-900 tracking-tight leading-snug">
-          Ciao, {firstName}
+          {familyAppName || 'Recipe Book'}
         </h1>
         <p className="mt-1 text-sm sm:text-base text-stone-500">Cosa cuciniamo oggi?</p>
       </section>

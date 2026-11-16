@@ -8,29 +8,41 @@ function apiUrl(path) {
 }
 
 /**
- * Authenticated fetch — JWT only (Dropbox is server-side).
- * In local dev VITE_WORKER_URL is empty and Vite proxies /api → worker.
- * In production it must point at the Worker origin.
+ * Fetch against the Worker. No login: the editor token (family PIN) is sent
+ * when this device has one. In local dev VITE_WORKER_URL is empty and Vite
+ * proxies /api → worker; in production it points at the Worker origin.
  */
 export async function apiFetch(path, options = {}) {
-  const { jwt } = useAuthStore.getState()
+  const { editToken } = useAuthStore.getState()
   const headers = {
     ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-    ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}),
+    ...(editToken ? { Authorization: `Bearer ${editToken}` } : {}),
     ...options.headers
   }
 
-  const res = await fetch(apiUrl(path), { ...options, headers })
+  let res
+  try {
+    res = await fetch(apiUrl(path), { ...options, headers })
+  } catch {
+    throw new Error('Connessione non riuscita. Controlla la rete e riprova.')
+  }
   const data = await res.json().catch(() => ({}))
 
   if (!res.ok) {
-    if (res.status === 401) {
-      throw new Error(data.error || 'Non autorizzato')
+    if (data.code === 'PIN_REQUIRED') {
+      // Token missing, expired or PIN changed on the server → forget it
+      if (editToken) useAuthStore.getState().lock()
+      const err = new Error('Serve il PIN di famiglia per questa operazione.')
+      err.code = 'PIN_REQUIRED'
+      throw err
     }
     if (data.code === 'FAMILY_DROPBOX_NOT_CONFIGURED') {
       throw new Error(data.error || 'Dropbox famiglia non configurato')
     }
-    throw new Error(data.error || data.message || `Richiesta fallita (${res.status})`)
+    const err = new Error(data.error || data.message || `Richiesta fallita (${res.status})`)
+    err.status = res.status
+    err.code = data.code
+    throw err
   }
   return data
 }

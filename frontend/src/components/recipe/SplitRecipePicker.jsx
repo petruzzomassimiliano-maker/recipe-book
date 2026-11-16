@@ -74,9 +74,6 @@ export default function SplitRecipePicker({ excludeId, onSelect, onCancel }) {
                   </span>
                   <span className="min-w-0">
                     <span className="block font-medium text-stone-900 truncate">{r.title}</span>
-                    {r.authorDisplayName ? (
-                      <span className="block text-xs text-stone-400 truncate">di {r.authorDisplayName}</span>
-                    ) : null}
                   </span>
                 </button>
               </li>

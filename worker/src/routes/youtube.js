@@ -1,11 +1,12 @@
 import { Hono } from 'hono'
-import { authMiddleware } from '../middleware/auth.js'
+import { editorMiddleware } from '../middleware/auth.js'
 import { collectGeminiKeys } from '../lib/geminiClient.js'
 import { isYoutubeUrl } from '../lib/youtube/ids.js'
 import { parseRecipeFromYoutube } from '../lib/youtube/parseRecipe.js'
 
 const youtube = new Hono()
-youtube.use('*', authMiddleware)
+// Gemini/scraping costs quota → PIN di famiglia richiesto
+youtube.use('*', ...editorMiddleware)
 
 /**
  * POST /api/youtube/parse-recipe

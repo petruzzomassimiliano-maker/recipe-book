@@ -1,7 +1,6 @@
 import { Hono } from 'hono'
-import { DropboxClient } from '../lib/dropboxClient.js'
 import { canViewRecipe, canEditRecipe } from '../lib/rbac.js'
-import { authMiddleware } from '../middleware/auth.js'
+import { editorMiddleware } from '../middleware/auth.js'
 import {
   collectGeminiKeys,
   geminiChat,
@@ -11,10 +10,11 @@ import {
 } from '../lib/geminiClient.js'
 
 const gemini = new Hono()
-gemini.use('*', authMiddleware)
+// Gemini/scraping costs quota → PIN di famiglia richiesto
+gemini.use('*', ...editorMiddleware)
 
 function dbx(c) {
-  return new DropboxClient(c.get('dropboxToken'))
+  return c.get('dbx')
 }
 
 const METHOD_ALIASES = {
@@ -344,11 +344,7 @@ gemini.post('/from-photo', async (c) => {
 
     return c.json({
       success: true,
-      data: {
-        ...draft,
-        isShared: true,
-        isPrivate: false
-      }
+      data: draft
     })
   } catch (err) {
     console.error('[gemini/from-photo]', err.message)

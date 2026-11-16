@@ -20,19 +20,53 @@
 | **Gemini recipe recognition** | «Sessione 3+» | ✅ Cascata in scraper |
 | **FatSecret integration** | — | ❌ Rimosso · DB locale + override utente |
 | **YouTube transcript parser** | «Sessione 5» + «17» | ✅ Sottotitoli (web → Android) + **Gemini guarda il video** se mancano |
-| **Shopping list feature** | «Sessione 3» + «12» | ✅ UX mobile checklist |
+| **Shopping list feature** | «Sessione 3» + «12» | 🗑️ Rimossa in «Sessione 19» |
 | **Material Design 3 UI** | «Sessione X» | ⏳ Pending (mobile HIG/Material touch già applicati) |
-| **Multi-user + RBAC** | «Sessione 7» + «10» | ✅ Ownership per utente + assign staff + reset/recovery |
+| **Multi-user + RBAC** | «Sessione 7» + «10» | 🗑️ Rimosso in «Sessione 19» (niente account, PIN di famiglia) |
 | **PWA + offline sync** | «Sessione 6» + «8» | ✅ Build + SW verificati (`dist/sw.js`) |
 | **Foto → Gemini Vision** | «Sessione 8» | ✅ Import da foto |
 | **Foto ricetta (upload)** | «Sessione 12» | ✅ Scatta / carica / URL → Dropbox `/recipes/images` |
 | **Split view desktop** | «Sessione 13» | ✅ Due ricette affiancate (`?split=`) ≥1024px |
 | **Form ricetta desktop** | «Sessione 13» | ✅ Layout largo, sticky Salva, foto + meta, ingredienti/passi a 2 col |
-| **Share ricette tra account** | «Sessione 14» | ✅ Ownership invariata; tab Condivise + tab staff con share-in |
+| **Share ricette tra account** | «Sessione 14» | 🗑️ Rimosso in «Sessione 19» (tutti vedono tutto) |
 | **Schermo sempre acceso** | «Sessione 15» | ✅ Wake Lock + toggle Impostazioni (device-local) |
-| **Invite link monouso** | «Sessione 8» + «10» | ✅ Copia messaggio (niente email/Resend) |
+| **Invite link monouso** | «Sessione 8» + «10» | 🗑️ Rimosso in «Sessione 19» |
 | **Deploy prod** | «Sessione 10» + «12»–«17» | ✅ Cloudflare + repo GitHub |
+| **Accesso senza account + PIN** | «Sessione 19» | ✅ Lettura libera; modifiche/import/IA con `EDIT_PIN` |
 | **Snippet riusabili** | «Biblioteca codice critico» (fine file) | ✅ Pattern da copiare in altri progetti |
+
+---
+
+## Sessione 19 — 2026-11-16 — Niente account: lettura libera + PIN di famiglia, bug fix
+
+### Segnalazione
+Eliminare gli utenti: chi apre il sito vede tutto senza autenticarsi. Modifiche protette da un unico PIN di famiglia. Rimuovere la lista della spesa. Controllare il sito e correggere i bug.
+
+### Soluzione
+- **Worker:** `familyMiddleware` (Dropbox famiglia + ruolo `viewer`/`editor`) e `requireEditor`. `POST /api/auth/unlock {pin}` → JWT `{role:'editor', pv}` valido 1 anno; `pv` = impronta di `EDIT_PIN`, quindi cambiare il PIN invalida tutti i token. Lettura ricette/foto/nutrizione libera; create/update/delete, upload foto, scraper, YouTube, Gemini (costa quota), alimenti custom e nome app richiedono il PIN.
+- Rimossi: route `users`, `shopping-list`, login/inviti/password/recupero, share tra account, ricette private, `lib/password.js`, `scripts/reset-owner-password.mjs`.
+- **Frontend:** niente login. `AppLayout` (sempre accessibile), `UnlockDialog` (PIN), `RequireEdit` per `/recipes/new|import|:id/edit`, pulsante lucchetto in navbar, Impostazioni ridotte (PIN, home, schermo, nome app). Le azioni protette nella scheda ricetta chiedono il PIN al bisogno.
+
+### Bug corretti
+| Bug | Fix |
+|-----|-----|
+| **Sicurezza:** `POST /api/auth/setup/dropbox` e `/setup/import-refresh` pubblici → chiunque poteva sostituire il Dropbox di famiglia | Endpoint rimossi; Dropbox solo da secret |
+| **Sicurezza/costi:** `POST /api/health/test-gemini` pubblico | Rimosso |
+| Token Dropbox revocato in anticipo restava in cache fino a ~4 h → sito rotto | `onAuthFailure` svuota la cache; le route usano il client condiviso |
+| Home: «ricetta a caso» cambiava da sola quando arrivava la lista dal server | Mantiene la scelta se la ricetta esiste ancora |
+| Home: usava la lista filtrata dall'ultima ricerca in /recipes | Home carica sempre la lista completa |
+| Home: «Più vecchia» ordinava per `updatedAt` | Usa `createdAt` (ora anche nell'indice) |
+| Ricetta cancellata ancora visibile dalla cache locale | Cache usata solo se offline, non su 404 |
+| Eliminazione: si tornava all'elenco prima dell'esito, errori invisibili | Attende la risposta e mostra l'errore |
+| Import da foto: foto > ~5,5 MB rifiutate dal Worker (limite base64) | Compressione a 2000 px prima dell'invio |
+| Id ricetta non validati prima del path Dropbox | Regex sugli id |
+| Dosi mostrate con il punto (0.5) | Decimali con virgola (0,5) |
+
+### File modificati
+Worker: `middleware/auth.js`, `lib/editPin.js` (**nuovo**), `lib/rbac.js`, `lib/users.js`, `lib/familyDropbox.js`, `lib/dropboxClient.js`, `routes/{auth,recipes,gemini,nutrition,media,scrapers,youtube,settings,health}.js`, `index.js`; eliminati `routes/{users,shopping}.js`, `lib/password.js`.
+Frontend: `App.jsx`, `store/authStore.js`, `services/{api,auth,recipes}.js`, `components/common/{AppLayout,RequireEdit,UnlockDialog}.jsx` (**nuovi**), `Navbar`, `MobileTabBar`, `RecipeDetailPane`, `RecipeForm`, `RecipeList`, `SplitRecipePicker`, pagine `Home`, `Recipes`, `Settings`, `ImportRecipe`, `NotFound`; eliminati Login/Setup/Invite/ChangePassword/DropboxCallback/ShoppingList e relativi store/servizi.
+
+**Deploy:** richiede il secret `EDIT_PIN` (`cd worker && npx wrangler secret put EDIT_PIN`). Dati utenti/liste spesa su Dropbox lasciati intatti (non più usati).
 
 ---
 

@@ -71,7 +71,6 @@ fi
 echo "▶ 3/4 Build frontend"
 (cd frontend && \
   VITE_WORKER_URL="$WORKER_URL" \
-  VITE_DROPBOX_REDIRECT_URI="$PAGES_URL/dropbox-callback" \
   VITE_APP_ENV=production \
   npx vite build)
 

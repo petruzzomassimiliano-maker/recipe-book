@@ -37,20 +37,6 @@ const tabs = [
     )
   },
   {
-    to: '/shopping-list',
-    label: 'Lista',
-    icon: (active) => (
-      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" aria-hidden>
-        <path
-          d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"
-          stroke="currentColor"
-          strokeWidth={active ? 2 : 1.75}
-          strokeLinecap="round"
-        />
-      </svg>
-    )
-  },
-  {
     to: '/settings',
     label: 'Altro',
     icon: (active) => (
@@ -78,7 +64,7 @@ export default function MobileTabBar() {
       className="sm:hidden fixed bottom-0 inset-x-0 z-30 border-t border-stone-200/80 bg-white/95 backdrop-blur-md pb-[env(safe-area-inset-bottom)]"
       aria-label="Navigazione principale"
     >
-      <ul className="grid grid-cols-4 max-w-lg mx-auto">
+      <ul className="grid grid-cols-3 max-w-lg mx-auto">
         {tabs.map((tab) => (
           <li key={tab.to}>
             <NavLink

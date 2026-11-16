@@ -1,14 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useAuth } from '../../hooks/useAuth.js'
+import { useEditAccess } from '../../store/authStore.js'
 import { useRecipeById } from '../../hooks/useRecipeById.js'
-import { useShoppingList } from '../../hooks/useShoppingList.js'
 import { useRecipes } from '../../hooks/useRecipes.js'
 import StepInstruction from './StepInstruction.jsx'
 import CookingMethodsSection from './CookingMethodsSection.jsx'
 import NutritionPanel from './NutritionPanel.jsx'
 import RecipeAiChat from './RecipeAiChat.jsx'
-import RecipeSharePanel from './RecipeSharePanel.jsx'
 import { analyzeCookingMethods } from '../../services/gemini.js'
 import { calculateRecipeNutrition, saveManualNutrition, upsertCustomFood } from '../../services/nutrition.js'
 import { formatScaledQty, scaleIngredients } from '../../utils/scaleIngredients.js'
@@ -24,23 +22,6 @@ const difficultyLabel = {
   hard: 'Difficile'
 }
 
-function userIdOf(user) {
-  return user?.id || user?.userId || null
-}
-
-function isRecipeAuthor(user, recipe) {
-  const uid = userIdOf(user)
-  if (!uid || !recipe?.author) return false
-  return recipe.author === `user-${uid}` || recipe.author === uid
-}
-
-function isSharedWithMe(user, recipe) {
-  const uid = userIdOf(user)
-  if (!uid) return false
-  const ids = recipe?.metadata?.sharedWithUserIds || recipe?.sharedWithUserIds || []
-  return ids.map(String).includes(String(uid))
-}
-
 /**
  * Single recipe panel — usable full-page or inside desktop split view.
  */
@@ -53,15 +34,13 @@ export default function RecipeDetailPane({
   onDeleted = null
 }) {
   const navigate = useNavigate()
-  const { user, isStaff } = useAuth()
+  const { canEdit, requestUnlock } = useEditAccess()
   const { recipe, setRecipe, isLoading, error, indexEntry } = useRecipeById(recipeId)
-  const { deleteRecipe, loadRecipes } = useRecipes()
-  const { addRecipeIngredients } = useShoppingList()
+  const { deleteRecipe } = useRecipes()
 
-  const [listMsg, setListMsg] = useState(null)
+  const [actionMsg, setActionMsg] = useState(null)
   const [servings, setServings] = useState(null)
   const [chatOpen, setChatOpen] = useState(false)
-  const [shareOpen, setShareOpen] = useState(false)
   const [methodsLoading, setMethodsLoading] = useState(false)
   const [methodsError, setMethodsError] = useState(null)
   const [methodsFocus, setMethodsFocus] = useState(null)
@@ -74,10 +53,12 @@ export default function RecipeDetailPane({
   const current = recipe?.id === recipeId ? recipe : null
   const baseServings = Math.max(1, Number(current?.metadata?.servings) || 1)
   const aid = (name) => (idPrefix ? `${idPrefix}-${name}` : name)
-  const canEdit = !!(current && (isStaff || isRecipeAuthor(user, current)))
-  const canShare = canEdit
-  const sharedWithMe = !!(current && !isRecipeAuthor(user, current) && isSharedWithMe(user, current))
-  const sharedCount = (current?.metadata?.sharedWithUserIds || []).length
+
+  /** Run fn only after the family PIN unlocks editing (asks for it if needed). */
+  const withEdit = (fn) => async (...args) => {
+    if (!(await requestUnlock())) return
+    return fn(...args)
+  }
 
   useEffect(() => {
     if (current) setServings(baseServings)
@@ -86,8 +67,7 @@ export default function RecipeDetailPane({
   useEffect(() => {
     setCheckedIng(new Set())
     setMoreOpen(false)
-    setShareOpen(false)
-    setListMsg(null)
+    setActionMsg(null)
   }, [recipeId])
 
   const scaledIngredients = useMemo(() => {
@@ -100,19 +80,21 @@ export default function RecipeDetailPane({
     [current?.steps]
   )
 
-  const handleDelete = async () => {
+  const handleDelete = withEdit(async () => {
     if (!current) return
     if (!window.confirm(`Eliminare “${current.title}”?`)) return
-    if (onDeleted) onDeleted(recipeId)
-    else navigate('/recipes')
+    setActionMsg(null)
     try {
       await deleteRecipe(recipeId)
-    } catch {
-      // store already has error
+    } catch (err) {
+      setActionMsg(`Eliminazione non riuscita: ${err.message}`)
+      return
     }
-  }
+    if (onDeleted) onDeleted(recipeId)
+    else navigate('/recipes')
+  })
 
-  const handleRemoveOrphan = async () => {
+  const handleRemoveOrphan = withEdit(async () => {
     const title = indexEntry?.title || 'questa ricetta'
     if (!window.confirm(`Rimuovere “${title}” dalla lista? Il file non è più disponibile.`)) return
     setRemoving(true)
@@ -125,30 +107,7 @@ export default function RecipeDetailPane({
     } finally {
       setRemoving(false)
     }
-  }
-
-  const handleAddToList = async () => {
-    if (!current) return
-    setListMsg(null)
-    try {
-      await addRecipeIngredients({
-        ...current,
-        ingredients: scaledIngredients,
-        metadata: {
-          ...current.metadata,
-          servings: servings ?? baseServings
-        }
-      })
-      const label = servings ?? baseServings
-      setListMsg(
-        label !== baseServings
-          ? `Ingredienti aggiunti (per ${label} porzioni)`
-          : 'Ingredienti aggiunti alla lista spesa'
-      )
-    } catch (err) {
-      setListMsg(err.message)
-    }
-  }
+  })
 
   const bumpServings = (delta) => {
     setServings((prev) => Math.max(1, Math.min(99, (prev ?? baseServings) + delta)))
@@ -175,7 +134,7 @@ export default function RecipeDetailPane({
     })
   }
 
-  const handleAnalyzeMethods = async () => {
+  const handleAnalyzeMethods = withEdit(async () => {
     if (!current) return
     setMethodsError(null)
     setMethodsLoading(true)
@@ -188,9 +147,9 @@ export default function RecipeDetailPane({
     } finally {
       setMethodsLoading(false)
     }
-  }
+  })
 
-  const handleSelectAppliance = async (methodId) => {
+  const handleSelectAppliance = withEdit(async (methodId) => {
     if (!current) return
     setMethodsError(null)
     setMethodsLoading(true)
@@ -204,7 +163,7 @@ export default function RecipeDetailPane({
       setMethodsLoading(false)
       setMethodsFocus(null)
     }
-  }
+  })
 
   const handleCalculateNutrition = async () => {
     if (!current) return
@@ -236,7 +195,7 @@ export default function RecipeDetailPane({
     }
   }
 
-  const handleSaveManualNutrition = async (perServing) => {
+  const handleSaveManualNutrition = withEdit(async (perServing) => {
     if (!current) return
     setNutritionError(null)
     setNutritionLoading(true)
@@ -262,9 +221,9 @@ export default function RecipeDetailPane({
     } finally {
       setNutritionLoading(false)
     }
-  }
+  })
 
-  const handleAddCustomFood = async (payload) => {
+  const handleAddCustomFood = withEdit(async (payload) => {
     if (!current) return
     setNutritionError(null)
     setNutritionLoading(true)
@@ -294,7 +253,7 @@ export default function RecipeDetailPane({
     } finally {
       setNutritionLoading(false)
     }
-  }
+  })
 
   if (isLoading || !current) {
     if (error && !isLoading) {
@@ -339,7 +298,6 @@ export default function RecipeDetailPane({
   const totalTime = (Number(meta.prepTime) || 0) + (Number(meta.cookTime) || 0)
   const activeServings = servings ?? baseServings
   const isScaled = activeServings !== baseServings
-  const authorName = current.authorDisplayName || indexEntry?.authorDisplayName
 
   const metaBits = [
     meta.prepTime ? `Prep ${meta.prepTime}'` : null,
@@ -380,31 +338,6 @@ export default function RecipeDetailPane({
 
         <div className={current.imageUrl ? 'mt-4' : 'mt-1'}>
           <h1 className={titleClass}>{current.title}</h1>
-          {(isStaff || sharedWithMe) && authorName && (
-            <p className="mt-1 text-sm text-stone-500">di {authorName}</p>
-          )}
-          {sharedWithMe && (
-            <div className="mt-3 rounded-xl border border-teal-200 bg-teal-50 px-3.5 py-2.5 text-sm text-teal-900">
-              <p className="font-semibold">Condivisa con questo account</p>
-              <p className="text-teal-800/90 mt-0.5 text-xs leading-relaxed">
-                Di {authorName || 'un familiare'} · sola lettura (non puoi modificarla)
-              </p>
-            </div>
-          )}
-          {!sharedWithMe && canShare && sharedCount > 0 && (
-            <div className="mt-3 rounded-xl border border-stone-200 bg-stone-50 px-3.5 py-2.5 text-sm text-stone-700">
-              <p className="font-medium text-stone-900">
-                Condivisa con{' '}
-                {(current.sharedWith || [])
-                  .map((p) => p.displayName)
-                  .filter(Boolean)
-                  .join(', ') || `${sharedCount} ${sharedCount === 1 ? 'persona' : 'persone'}`}
-              </p>
-              <p className="text-xs text-stone-500 mt-0.5">
-                Resta tua · loro la trovano in Ricette → Condivise
-              </p>
-            </div>
-          )}
           {metaBits.length > 0 && (
             <p className="mt-2 text-sm text-stone-500 flex flex-wrap gap-x-2 gap-y-0.5">
               {metaBits.map((bit, i) => (
@@ -417,54 +350,37 @@ export default function RecipeDetailPane({
           )}
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link
+            to={`/recipes/${recipeId}/edit`}
+            className="btn-secondary !py-2.5 !px-4 text-sm text-center"
+            onClick={async (e) => {
+              if (canEdit) return
+              e.preventDefault()
+              if (await requestUnlock()) navigate(`/recipes/${recipeId}/edit`)
+            }}
+          >
+            Modifica
+          </Link>
           <button
             type="button"
-            className="btn-primary !py-2.5 !px-4 text-sm col-span-2 sm:col-span-1 sm:w-auto"
-            onClick={handleAddToList}
+            className="btn-secondary !py-2.5 !px-4 text-sm"
+            onClick={withEdit(() => setChatOpen(true))}
           >
-            + Lista spesa
+            Chiedi ad IA
           </button>
-          {canEdit && (
-            <Link
-              to={`/recipes/${recipeId}/edit`}
-              className="btn-secondary !py-2.5 !px-4 text-sm text-center"
-            >
-              Modifica
-            </Link>
-          )}
-          {canShare && (
-            <button
-              type="button"
-              className="btn-secondary !py-2.5 !px-4 text-sm"
-              onClick={() => setShareOpen(true)}
-            >
-              Condividi
-            </button>
-          )}
-          {canEdit && (
-            <button
-              type="button"
-              className="btn-secondary !py-2.5 !px-4 text-sm"
-              onClick={() => setChatOpen(true)}
-            >
-              Chiedi ad IA
-            </button>
-          )}
           {headerActions}
-          {canEdit && (
-            <button
-              type="button"
-              className="inline-flex items-center justify-center min-h-[44px] text-sm text-stone-400 active:text-red-600"
-              onClick={() => setMoreOpen((v) => !v)}
-              aria-expanded={moreOpen}
-            >
-              Altro
-            </button>
-          )}
+          <button
+            type="button"
+            className="inline-flex items-center justify-center min-h-[44px] px-2 text-sm text-stone-400 active:text-red-600"
+            onClick={() => setMoreOpen((v) => !v)}
+            aria-expanded={moreOpen}
+          >
+            Altro
+          </button>
         </div>
 
-        {moreOpen && canEdit && (
+        {moreOpen && (
           <div className="mt-2 flex flex-wrap gap-2">
             <button
               type="button"
@@ -476,7 +392,11 @@ export default function RecipeDetailPane({
           </div>
         )}
 
-        {listMsg && <p className="mt-3 text-sm text-teal-700">{listMsg}</p>}
+        {actionMsg && (
+          <p className="mt-3 text-sm text-red-600" role="alert">
+            {actionMsg}
+          </p>
+        )}
 
         {!!meta.tags?.length && (
           <div className="flex flex-wrap gap-1.5 mt-3">
@@ -693,17 +613,17 @@ export default function RecipeDetailPane({
           loading={methodsLoading}
           loadingMethod={methodsFocus}
           error={methodsError}
-          onAnalyze={canEdit ? handleAnalyzeMethods : undefined}
-          onSelectAppliance={canEdit ? handleSelectAppliance : undefined}
+          onAnalyze={handleAnalyzeMethods}
+          onSelectAppliance={handleSelectAppliance}
         />
 
         <NutritionPanel
           nutritionInfo={current.nutritionInfo}
           loading={nutritionLoading}
           error={nutritionError}
-          onCalculate={canEdit ? handleCalculateNutrition : undefined}
-          onSaveManual={canEdit ? handleSaveManualNutrition : undefined}
-          onAddCustomFood={canEdit ? handleAddCustomFood : undefined}
+          onCalculate={handleCalculateNutrition}
+          onSaveManual={handleSaveManualNutrition}
+          onAddCustomFood={handleAddCustomFood}
         />
       </div>
 
@@ -728,16 +648,6 @@ export default function RecipeDetailPane({
         onClose={() => setChatOpen(false)}
       />
 
-      {shareOpen && (
-        <RecipeSharePanel
-          recipe={current}
-          onUpdated={(updated) => {
-            setRecipe(updated)
-            loadRecipes().catch(() => {})
-          }}
-          onClose={() => setShareOpen(false)}
-        />
-      )}
     </div>
   )
 }

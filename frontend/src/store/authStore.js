@@ -1,63 +1,60 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { logoutFromWorker } from '../services/auth.js'
 
 /**
- * Auth store — JWT app user (family Dropbox is server-side).
+ * No user accounts. This device may hold an "editor" token, obtained once
+ * with the family PIN, that unlocks add / edit / delete / import / IA.
  */
+let pendingUnlock = []
+
 export const useAuthStore = create(
   persist(
-    (set) => ({
-      jwt: null,
-      user: null,
+    (set, get) => ({
+      editToken: null,
       familyAppName: 'Recipe Book',
-      isAuthenticated: false,
-      isLoading: false,
-      error: null,
-      mustChangePassword: false,
-      setupEnvHint: null,
+      featuredMode: 'random',
+      unlockOpen: false,
 
-      setAuth: ({ jwt, user, familyAppName, mustChangePassword }) => {
-        set({
-          jwt,
-          user,
-          familyAppName: familyAppName || 'Recipe Book',
-          mustChangePassword: Boolean(mustChangePassword ?? user?.mustChangePassword),
-          isAuthenticated: true,
-          isLoading: false,
-          error: null
+      setEditToken: (editToken) => {
+        set({ editToken, unlockOpen: false })
+        const resolvers = pendingUnlock
+        pendingUnlock = []
+        resolvers.forEach((resolve) => resolve(Boolean(editToken)))
+      },
+      lock: () => set({ editToken: null }),
+      setFamilyAppName: (familyAppName) => set({ familyAppName: familyAppName || 'Recipe Book' }),
+      setFeaturedMode: (featuredMode) => set({ featuredMode }),
+
+      /** Opens the PIN dialog; resolves true once unlocked, false if dismissed. */
+      requestUnlock: () => {
+        if (get().editToken) return Promise.resolve(true)
+        return new Promise((resolve) => {
+          pendingUnlock.push(resolve)
+          set({ unlockOpen: true })
         })
       },
-
-      setUser: (user) => set({ user }),
-      setFamilyAppName: (familyAppName) => set({ familyAppName }),
-      setMustChangePassword: (mustChangePassword) => set({ mustChangePassword }),
-      setSetupEnvHint: (setupEnvHint) => set({ setupEnvHint }),
-      setLoading: (isLoading) => set({ isLoading }),
-      setError: (error) => set({ error }),
-
-      logout: async () => {
-        await logoutFromWorker()
-        set({
-          jwt: null,
-          user: null,
-          familyAppName: 'Recipe Book',
-          isAuthenticated: false,
-          mustChangePassword: false,
-          setupEnvHint: null,
-          error: null
-        })
+      cancelUnlock: () => {
+        set({ unlockOpen: false })
+        const resolvers = pendingUnlock
+        pendingUnlock = []
+        resolvers.forEach((resolve) => resolve(false))
       }
     }),
     {
-      name: 'recipe-book-auth',
+      name: 'recipe-book-edit',
       partialize: (state) => ({
-        jwt: state.jwt,
-        user: state.user,
+        editToken: state.editToken,
         familyAppName: state.familyAppName,
-        isAuthenticated: state.isAuthenticated,
-        mustChangePassword: state.mustChangePassword
+        featuredMode: state.featuredMode
       })
     }
   )
 )
+
+/** Hook: { canEdit, requestUnlock, lock } */
+export function useEditAccess() {
+  const canEdit = useAuthStore((s) => Boolean(s.editToken))
+  const requestUnlock = useAuthStore((s) => s.requestUnlock)
+  const lock = useAuthStore((s) => s.lock)
+  return { canEdit, requestUnlock, lock }
+}

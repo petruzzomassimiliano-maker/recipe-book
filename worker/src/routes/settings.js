@@ -1,20 +1,16 @@
 import { Hono } from 'hono'
-import { authMiddleware } from '../middleware/auth.js'
-import { canEditFamilySettings } from '../lib/rbac.js'
+import { familyMiddleware, requireEditor } from '../middleware/auth.js'
 import { loadFamilySettings, saveFamilySettings } from '../lib/users.js'
 
 const settings = new Hono()
-settings.use('*', authMiddleware)
+settings.use('*', familyMiddleware)
 
 settings.get('/', async (c) => {
   const data = await loadFamilySettings(c.get('dbx'))
   return c.json({ success: true, data })
 })
 
-settings.put('/', async (c) => {
-  if (!canEditFamilySettings(c.get('user'))) {
-    return c.json({ error: 'Solo owner/admin possono cambiare le impostazioni famiglia' }, 403)
-  }
+settings.put('/', requireEditor, async (c) => {
   try {
     const body = await c.req.json()
     const current = await loadFamilySettings(c.get('dbx'))

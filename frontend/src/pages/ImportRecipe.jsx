@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import RecipeForm from '../components/recipe/RecipeForm.jsx'
 import { fetchRecipeFromUrl, isYoutubeUrl, parseYoutubeRecipe } from '../services/scraper.js'
 import { extractRecipeFromPhoto } from '../services/gemini.js'
+import { readAndCompressImage } from '../services/media.js'
 import { useRecipes } from '../hooks/useRecipes.js'
 import { clearDraft, draftKey, useSessionDraft } from '../hooks/useSessionDraft.js'
 import { useRef, useState } from 'react'
@@ -10,19 +11,6 @@ const IMPORT_PAGE_KEY = draftKey('import-page')
 
 function formPersistKey(url) {
   return draftKey(`recipe-form:import:${url || 'pending'}`)
-}
-
-function readFileAsBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = String(reader.result || '')
-      const base64 = result.includes(',') ? result.split(',')[1] : result
-      resolve(base64)
-    }
-    reader.onerror = () => reject(new Error('Lettura file fallita'))
-    reader.readAsDataURL(file)
-  })
 }
 
 export default function ImportRecipe() {
@@ -107,18 +95,17 @@ export default function ImportRecipe() {
       setError('Usa una foto JPEG, PNG o WebP')
       return
     }
-    if (file.size > 6 * 1024 * 1024) {
-      setError('Foto troppo grande (max 6 MB)')
+    if (file.size > 12 * 1024 * 1024) {
+      setError('Foto troppo grande (max 12 MB)')
       return
     }
     setError(null)
     setPhotoLoading(true)
     try {
-      const imageBase64 = await readFileAsBase64(file)
-      const res = await extractRecipeFromPhoto({
-        imageBase64,
-        mimeType: file.type === 'image/jpg' ? 'image/jpeg' : file.type
-      })
+      // Resize before upload: phone photos easily exceed the Worker limit as base64.
+      // 2000px keeps small recipe text legible for Gemini.
+      const { base64, mimeType } = await readAndCompressImage(file, { maxEdge: 2000, quality: 0.85 })
+      const res = await extractRecipeFromPhoto({ imageBase64: base64, mimeType })
       applyScrape(res.data, res.data?.sourceUrl || `photo:${file.name}`)
     } catch (err) {
       setError(err.message || 'Analisi foto fallita')
@@ -304,9 +291,7 @@ export default function ImportRecipe() {
                 cookTime: scrape.cookTime,
                 difficulty: scrape.difficulty,
                 cuisine: scrape.cuisine,
-                tags: [],
-                isShared: true,
-                isPrivate: false
+                tags: []
               }
             }}
             onSubmit={handleSave}

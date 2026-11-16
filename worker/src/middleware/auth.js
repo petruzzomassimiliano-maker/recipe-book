@@ -1,78 +1,51 @@
 import { verifyJWT, jwtSecret } from '../lib/jwt.js'
 import { getFamilyDropboxClient } from '../lib/familyDropbox.js'
-import { findUserById, loadUsers, ROLES } from '../lib/users.js'
+import { pinVersion } from '../lib/editPin.js'
 
 /**
- * JWT auth + inject family Dropbox client (server-side token).
+ * No user accounts: everyone may read.
+ * Mutations (and anything that spends Gemini quota) need an "editor" token,
+ * obtained once with the family PIN (POST /api/auth/unlock).
  */
-export const authMiddleware = async (c, next) => {
+async function readEditor(c) {
   const authHeader = c.req.header('Authorization')
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return c.json({ error: 'Unauthorized — missing or invalid token' }, 401)
-  }
-
-  const token = authHeader.slice(7)
+  if (!authHeader?.startsWith('Bearer ')) return false
   try {
-    const payload = await verifyJWT(token, jwtSecret(c.env))
-    if (!payload) return c.json({ error: 'Unauthorized — invalid JWT' }, 401)
-    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
-      return c.json({ error: 'Unauthorized — token expired' }, 401)
-    }
-
-    // Legacy superUser → treat as owner-equivalent staff
-    if (payload.role === 'superUser') payload.role = ROLES.OWNER
-    if (payload.role === 'user') payload.role = ROLES.MEMBER
-
-    let dbx
-    try {
-      dbx = await getFamilyDropboxClient(c.env)
-    } catch (err) {
-      return c.json(
-        { error: err.message, code: err.code || 'FAMILY_DROPBOX_NOT_CONFIGURED' },
-        err.status || 503
-      )
-    }
-
-    // Soft-check active user when possible
-    try {
-      const users = await loadUsers(dbx)
-      const row = findUserById(users, payload.userId)
-      if (row && row.active === false) {
-        return c.json({ error: 'Account disattivato' }, 403)
-      }
-      if (row) {
-        payload.role = row.role
-        payload.mustChangePassword = Boolean(row.mustChangePassword)
-        payload.name = row.displayName || row.username
-        payload.username = row.username
-      }
-    } catch {
-      // continue with JWT claims
-    }
-
-    c.set('user', payload)
-    c.set('dbx', dbx)
-    // Back-compat for routes still reading dropboxToken
-    c.set('dropboxToken', dbx.accessToken)
-    await next()
-  } catch (err) {
-    console.error('[authMiddleware]', err.message)
-    return c.json({ error: 'Unauthorized — JWT verification failed' }, 401)
+    const payload = await verifyJWT(authHeader.slice(7), jwtSecret(c.env))
+    if (!payload || payload.role !== 'editor') return false
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return false
+    // Changing EDIT_PIN invalidates every token issued with the old PIN
+    const pv = await pinVersion(c.env)
+    return Boolean(pv) && payload.pv === pv
+  } catch {
+    return false
   }
 }
 
-/** Optional auth — attaches user if present. */
-export const optionalAuthMiddleware = async (c, next) => {
-  const authHeader = c.req.header('Authorization')
-  if (authHeader?.startsWith('Bearer ')) {
-    try {
-      const payload = await verifyJWT(authHeader.slice(7), jwtSecret(c.env))
-      if (payload?.exp && payload.exp >= Math.floor(Date.now() / 1000)) {
-        c.set('user', payload)
-      }
-    } catch {
-      // ignore
-    }
+/** Attaches the family Dropbox client + `user` ({ role: 'editor' | 'viewer' }). */
+export const familyMiddleware = async (c, next) => {
+  let dbx
+  try {
+    dbx = await getFamilyDropboxClient(c.env)
+  } catch (err) {
+    return c.json(
+      { error: err.message, code: err.code || 'FAMILY_DROPBOX_NOT_CONFIGURED' },
+      err.status || 503
+    )
+  }
+  const editor = await readEditor(c)
+  c.set('user', { role: editor ? 'editor' : 'viewer' })
+  c.set('dbx', dbx)
+  await next()
+}
+
+/** Use after familyMiddleware on routes that change data or call Gemini. */
+export const requireEditor = async (c, next) => {
+  if (c.get('user')?.role !== 'editor') {
+    return c.json({ error: 'Serve il PIN di famiglia per modificare', code: 'PIN_REQUIRED' }, 401)
   }
   await next()
 }
+
+/** Shorthand: family Dropbox + editor check. */
+export const editorMiddleware = [familyMiddleware, requireEditor]
