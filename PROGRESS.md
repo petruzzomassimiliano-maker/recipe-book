@@ -30,7 +30,7 @@
 | **Split view desktop** | «Sessione 13» | ✅ Due ricette affiancate (`?split=`) ≥1024px |
 | **Form ricetta desktop** | «Sessione 13» | ✅ Layout largo, sticky Salva, foto + meta, ingredienti/passi a 2 col |
 | **Share ricette tra account** | «Sessione 14» | 🗑️ Rimosso in «Sessione 19» (tutti vedono tutto) |
-| **Schermo sempre acceso** | «Sessione 15» | ✅ Wake Lock + toggle Impostazioni (device-local) |
+| **Schermo sempre acceso** | «Sessione 15» + «19» | ✅ Wake Lock + toggle Impostazioni (device-local), riacquisizione e stato reale |
 | **Invite link monouso** | «Sessione 8» + «10» | 🗑️ Rimosso in «Sessione 19» |
 | **Deploy prod** | «Sessione 10» + «12»–«17» | ✅ Cloudflare + repo GitHub |
 | **Accesso senza account + PIN** | «Sessione 19» | ✅ Lettura libera; modifiche/import/IA con `EDIT_PIN` |
@@ -74,6 +74,21 @@ Frontend: `App.jsx`, `store/authStore.js`, `services/{api,auth,recipes}.js`, `co
 - **Foto da smartphone:** Importa aveva un solo input con `capture` → su Android si apriva solo la fotocamera (niente galleria): ora «Scatta foto» + «Scegli foto o PDF». `accept="image/*"` (prima erano escluse HEIC/HEIF e file con type vuoto), messaggio chiaro se il browser non decodifica HEIC. Nel form l'anteprima `data:` finiva in `imageUrl` e, se l'upload falliva, veniva salvata su Dropbox e nella bozza localStorage → ora anteprima solo locale. `<img>` nascosto dopo un URL rotto restava nascosto anche con la foto nuova → `key`.
 - **Import PDF:** `POST /api/gemini/from-photo` accetta `application/pdf` (max ~10 MB) → Gemini estrae la ricetta.
 - **Export PDF:** `utils/recipePdf.js` (jsPDF 4, import dinamico): foto, porzioni scelte, ingredienti/passi con sezioni, metodi di cottura, fonte, piè di pagina. Su smartphone `navigator.share` con file, altrimenti download. Font standard = Windows-1252: caratteri tipografici mappati, emoji rimosse.
+
+### «Come cuocerla» e schermo acceso (terza richiesta)
+Verifica sui consigli già salvati in produzione (8 ricette): il metodo «consigliato» era sbagliato in 3 casi su 8 (Mini burger: ricetta in friggitrice → consigliato forno; Babaganoush: forno statico 220 °C → friggitrice; Melanzane gratinate: griglia + forno ventilato → friggitrice) e per i Pancake veniva proposta la «bollitura a 100 °C».
+
+| Causa | Fix |
+|-------|-----|
+| Il «consigliato» lo sceglieva Gemini, non la ricetta | `cookingDetect.js` (stesso file in worker e frontend): metodo principale = passo con temperatura/tempo (a parità vince il più tardi; titolo vince sempre); `recommended` forzato su quello |
+| Toccando un'icona il metodo richiesto diventava «consigliato» (merge con `preferred` del modello) | In focus si aggiorna solo quella guida; il consigliato non cambia; il riassunto generale resta |
+| Regex: «bollicine»/«brodo bollente»/«bollore» → bollitura; «carta forno» → forno; «grigliare»/«bistecchiera» non riconosciuti; «lessatele» no | Pattern rivisti + false friends rimossi prima del match |
+| Temperatura/tempo del metodo della ricetta «arrotondati» dal modello, modalità statico/ventilato persa | Copiati dal testo (anche «statica/ventilata») sia nel salvataggio sia in visualizzazione |
+| Prompt senza regole di conversione | Conversioni forno statico/ventilato/friggitrice, metodi inadatti → «sconsigliato» con motivo, temperatura al cuore per carne/pesce |
+
+UI: badge «consigliato» calcolato dal testo anche sulle guide vecchie; se la guida salvata consigliava un altro metodo compare l'invito ad «Aggiorna tutti».
+
+**Schermo acceso** — simulazione Wake Lock (jsdom): la versione precedente non riacquisiva il blocco se il sistema lo rilasciava con l'app aperta (schermo che si spegne mentre si cucina) e non riprovava dopo un rifiuto; Impostazioni diceva «Attivo» anche se il blocco era negato. Ora: riacquisizione su `release` visibile, `visibilitychange`, `pageshow` e al primo tocco; stato reale (`active`/`error`) in Impostazioni con il motivo del rifiuto.
 
 **Deploy:** richiede il secret `EDIT_PIN` (`cd worker && npx wrangler secret put EDIT_PIN`). Dati utenti/liste spesa su Dropbox lasciati intatti (non più usati).
 

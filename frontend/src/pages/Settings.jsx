@@ -18,6 +18,8 @@ export default function Settings() {
 
   const keepAwake = useKeepAwakeStore((s) => s.enabled)
   const setKeepAwake = useKeepAwakeStore((s) => s.setEnabled)
+  const keepAwakeActive = useKeepAwakeStore((s) => s.active)
+  const keepAwakeError = useKeepAwakeStore((s) => s.error)
   const wakeLockOk = isWakeLockSupported()
 
   useEffect(() => {
@@ -115,11 +117,15 @@ export default function Settings() {
           <span className="min-w-0">
             <span className="block text-sm font-medium text-stone-800">Tieni lo schermo acceso</span>
             <span className="block text-xs text-stone-500 mt-0.5">
-              {wakeLockOk
-                ? keepAwake
-                  ? 'Attivo finché l’app è in primo piano'
-                  : 'Disattivo'
-                : 'Non supportato da questo browser'}
+              {!wakeLockOk
+                ? 'Non supportato da questo browser (su iPhone serve iOS 16.4 o successivo)'
+                : !keepAwake
+                  ? 'Disattivo'
+                  : keepAwakeActive
+                    ? 'Attivo: lo schermo resta acceso mentre l’app è aperta'
+                    : keepAwakeError
+                      ? 'Non attivo: tocca lo schermo per riprovare'
+                      : 'In attivazione…'}
             </span>
           </span>
           <input
@@ -143,6 +149,11 @@ export default function Settings() {
             />
           </span>
         </label>
+        {wakeLockOk && keepAwake && keepAwakeError && (
+          <p className="text-xs text-amber-700 leading-relaxed" role="alert">
+            {keepAwakeError}
+          </p>
+        )}
         {wakeLockOk && keepAwake && (
           <p className="text-xs text-stone-400 leading-relaxed">
             Se metti l’app in background lo schermo può spegnersi; tornando qui si riattiva da solo.

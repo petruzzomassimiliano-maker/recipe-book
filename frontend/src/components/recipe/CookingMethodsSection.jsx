@@ -3,9 +3,9 @@ import { ApplianceIcon } from './ApplianceIcon.jsx'
 import {
   COMMON_COOKING_APPLIANCES,
   COOKING_APPLIANCES,
-  detectMentionedMethods,
   normalizeMethodId
 } from '../../utils/cookingAppliances.js'
+import { detectRecipeMethods } from '../../utils/cookingDetect.js'
 
 export default function CookingMethodsSection({
   recipe,
@@ -17,20 +17,36 @@ export default function CookingMethodsSection({
   onAnalyze,
   onSelectAppliance
 }) {
-  const mentioned = useMemo(() => detectMentionedMethods(recipe), [recipe])
-  const mentionedIds = useMemo(() => new Set(mentioned.map((m) => m.method)), [mentioned])
-  const recommendedFromText = useMemo(() => {
-    const hit = mentioned.find((m) => m.recommended) || mentioned[0]
-    return hit?.method || null
-  }, [mentioned])
+  // The recipe's own method comes from its text (same detector as the Worker)
+  const detected = useMemo(() => detectRecipeMethods(recipe), [recipe])
+  const mentioned = useMemo(() => detected.mentioned.map((method) => ({ method })), [detected])
+  const mentionedIds = useMemo(() => new Set(detected.mentioned), [detected])
+  const primary = detected.primary
+
+  const savedRecommended = useMemo(
+    () => normalizeMethodId((methods || []).find((m) => m.recommended)?.method || ''),
+    [methods]
+  )
+  // Guides saved by the old logic could recommend a method the recipe doesn't use
+  const staleGuides = Boolean(primary && methods?.length && savedRecommended && savedRecommended !== primary)
+  const recommendedId = primary || savedRecommended || null
 
   const methodsById = useMemo(() => {
     const map = new Map()
     for (const m of methods || []) {
-      map.set(normalizeMethodId(m.method), m)
+      const id = normalizeMethodId(m.method)
+      // Temperature/time of the recipe's own method are read from the recipe text
+      const fromText =
+        id === primary
+          ? {
+              ...(detected.params.temperature ? { temperature: detected.params.temperature } : {}),
+              ...(detected.params.time ? { time: detected.params.time } : {})
+            }
+          : {}
+      map.set(id, { ...m, ...fromText, recommended: id === recommendedId })
     }
     return map
-  }, [methods])
+  }, [methods, primary, detected, recommendedId])
 
   // Solo metodi comuni + eventuali metodi non-comuni citati nella ricetta
   const visibleAppliances = useMemo(() => {
@@ -105,7 +121,14 @@ export default function CookingMethodsSection({
         </p>
       )}
 
-      {summary && expanded && (
+      {staleGuides && (
+        <p className="mb-3 text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+          Questi consigli sono stati creati con una versione precedente e possono essere imprecisi.
+          Tocca «Aggiorna tutti» per rigenerarli.
+        </p>
+      )}
+
+      {summary && expanded && !staleGuides && (
         <p className="mb-4 text-[15px] leading-relaxed text-gray-700">{summary}</p>
       )}
 
@@ -118,9 +141,7 @@ export default function CookingMethodsSection({
           const isSelected = expanded && selectedId === app.id
           const inRecipe = mentionedIds.has(app.id)
           const hasGuide = methodsById.has(app.id)
-          const isRec =
-            methodsById.get(app.id)?.recommended ||
-            (recommendedFromText === app.id && !methods?.some((m) => m.recommended))
+          const isRec = recommendedId === app.id
           const busy = loadingMethod === app.id
 
           return (
@@ -184,8 +205,8 @@ export default function CookingMethodsSection({
                 <h3 className="font-semibold text-gray-900 text-base sm:text-lg">
                   {selectedMethod?.label || selectedMeta?.label || selectedId}
                 </h3>
-                {(selectedMethod?.recommended || recommendedFromText === selectedId) && (
-                  <p className="text-xs text-primary font-medium">Metodo consigliato dalla ricetta</p>
+                {recommendedId === selectedId && (
+                  <p className="text-xs text-primary font-medium">Metodo della ricetta</p>
                 )}
               </div>
             </div>

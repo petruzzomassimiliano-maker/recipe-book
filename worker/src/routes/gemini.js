@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { canViewRecipe, canEditRecipe } from '../lib/rbac.js'
 import { editorMiddleware } from '../middleware/auth.js'
+import { detectRecipeMethods } from '../lib/cookingDetect.js'
 import {
   collectGeminiKeys,
   geminiChat,
@@ -46,41 +47,6 @@ function normalizeMethodId(raw) {
     .replace(/[\s-]+/g, '_')
   const aliased = METHOD_ALIASES[id] || id
   return KNOWN_METHODS.has(aliased) ? aliased : 'altro'
-}
-
-function detectHintedMethods(recipe) {
-  const title = String(recipe?.title || '')
-  const blob = [
-    title,
-    recipe?.notes,
-    recipe?.sourceUrl,
-    ...(recipe?.steps || []).map((s) => s.instruction || ''),
-    ...(recipe?.metadata?.tags || [])
-  ]
-    .filter(Boolean)
-    .join('\n')
-
-  const rules = [
-    {
-      id: 'friggitrice_aria',
-      re: /friggitrice\s+ad\s+aria|air\s*[- ]?\s*fryer|\bairfryer\b|cottura\s+ad\s+aria/i
-    },
-    { id: 'forno', re: /\bforno\b|in\s+forno/i },
-    { id: 'padella', re: /\bpadella\b|in\s+padella|soffrigg|\bwok\b/i },
-    { id: 'bollitura', re: /\bboll[ie]|acqua\s+bollente/i },
-    { id: 'vapore', re: /\ba\s+vapore\b|\bvaporiera\b|\bsteam/i },
-    { id: 'grill', re: /\bgrill\b|\bgriglia\b|\bbarbecue\b/i },
-    { id: 'microonde', re: /\bmicroonde\b|\bmicrowave\b/i }
-  ]
-
-  const hinted = []
-  for (const rule of rules) {
-    const inTitle = rule.re.test(title)
-    if (inTitle || rule.re.test(blob)) {
-      hinted.push({ id: rule.id, fromTitle: inTitle })
-    }
-  }
-  return hinted
 }
 
 function normalizeMethods(raw) {
@@ -139,96 +105,111 @@ gemini.post('/cooking-methods', async (c) => {
     if (!recipe?.title) return c.json({ error: 'Ricetta obbligatoria' }, 400)
 
     const focusMethod = body.focusMethod ? normalizeMethodId(body.focusMethod) : null
-    const hinted = detectHintedMethods(recipe)
-    const titleHints = hinted.filter((h) => h.fromTitle).map((h) => h.id)
-    const allHints = hinted.map((h) => h.id)
+    // The recipe's own method comes from its text, never from the model
+    const detected = detectRecipeMethods(recipe)
+    const primary = detected.primary
+    const LABELS = {
+      friggitrice_aria: 'Friggitrice ad aria',
+      forno: 'Forno',
+      padella: 'Padella',
+      bollitura: 'Bollitura',
+      vapore: 'Vapore',
+      grill: 'Grill / griglia',
+      microonde: 'Microonde'
+    }
+
+    const primaryBlock = primary
+      ? `METODO DELLA RICETTA (già deciso, non cambiarlo): "${primary}"${
+          detected.params.temperature || detected.params.time
+            ? ` — dal testo: ${[detected.params.temperature, detected.params.time].filter(Boolean).join(', ')}`
+            : ''
+        }.
+Per questo metodo copia ESATTAMENTE temperatura, modalità (statico/ventilato) e tempi scritti nella ricetta; non arrotondare e non "migliorare". Se la ricetta ha più fasi (es. griglia e poi forno), "time" è solo la fase di quel metodo.`
+      : 'La ricetta non indica chiaramente un metodo: proponi quello più tradizionale per questo piatto.'
 
     const focusBlock = focusMethod
       ? `
 FOCUS OBBLIGATORIO: l'utente ha scelto "${focusMethod}".
-Devi restituire UN metodo dettagliato con method="${focusMethod}" (temperature, tempo, notes pratiche passo-passo, differences rispetto al metodo della ricetta).
-Puoi aggiungere al massimo 1-2 alternative brevi.
+Restituisci UN oggetto con method="${focusMethod}": temperature, time, notes pratiche passo-passo, differences rispetto al metodo della ricetta.
+Se "${focusMethod}" NON è adatto a questo piatto (es. bollitura per dei pancake), restituiscilo comunque con temperature e time vuoti e in notes spiega in 1-2 frasi perché è sconsigliato. Non inventare procedimenti assurdi.
+Puoi aggiungere al massimo 1 alternativa breve.
 `
       : ''
 
-    const prompt = `Analizza questa ricetta e individua i metodi di cottura possibili/consigliati.
+    const prompt = `Sei un cuoco esperto. Per questa ricetta indica come cuocerla con i metodi di cottura sensati.
 Restituisci SOLO JSON:
 {
   "methods": [
     {
-      "method": "forno|padella|friggitrice_aria|bollitura|vapore|grill|microonde|altro",
+      "method": "forno|padella|friggitrice_aria|bollitura|vapore|grill|microonde",
       "label": "nome leggibile IT",
-      "temperature": "es. 180°C oppure vuoto",
+      "temperature": "es. 180°C statico, oppure fuoco medio; vuoto se non serve",
       "time": "es. 25-30 min",
-      "notes": "come procedere in breve (passi concreti)",
-      "differences": "cosa cambia rispetto agli altri metodi (texture, tempo, grassi…)",
-      "recommended": true/false
+      "notes": "come procedere, passi concreti e brevi",
+      "differences": "cosa cambia rispetto al metodo della ricetta (texture, tempi, grassi)"
     }
   ],
-  "summary": "1-2 frasi su quale metodo preferire e perché"
+  "summary": "1-2 frasi: il metodo della ricetta e quando conviene un'alternativa"
 }
 
-Regole PRIORITARIE:
-- Il TITOLO è vincolante: se cita un elettrodomestico/metodo, quel method DEVE comparire con recommended:true
-- Hint già rilevati nel titolo: ${titleHints.length ? titleHints.join(', ') : '(nessuno)'}
-- Hint nel testo/URL: ${allHints.length ? allHints.join(', ') : '(nessuno)'}
-- "friggitrice ad aria" / air fryer → method="friggitrice_aria" (NON confonderla con frittura in padella)
-- Se ha senso proporre alternative (forno ↔ friggitrice_aria ↔ padella), aggiungile con tempi/temperature stimati
-- Non inventare metodi assurdi; massimo 4 metodi (o 1-3 se c'è FOCUS)
-- Lingua italiana
+${primaryBlock}
+
+Regole per le ALTERNATIVE:
+- Proponi solo metodi davvero adatti a QUESTO piatto (massimo 3 in totale, incluso quello della ricetta). Niente bollitura per impasti da cuocere in padella/forno, niente microonde per lievitati, ecc.
+- Conversioni realistiche dal metodo della ricetta:
+  · forno ventilato ≈ statico −10/20 °C, tempi simili;
+  · friggitrice ad aria ≈ forno ventilato −10/20 °C e −20/30% del tempo, pezzi in un solo strato, girare a metà;
+  · teglie alte/sformati/torte in friggitrice ad aria solo se lo stampo ci sta: dillo.
+- Carne, pollo, pesce, uova: se pertinente indica la temperatura al cuore di sicurezza (es. pollo 75 °C).
+- Non inventare ingredienti; usa le quantità della ricetta. Lingua italiana.
 ${focusBlock}
 RICETTA:
-${recipeContextSummary(recipe)}
-${recipe.sourceUrl ? `URL fonte: ${recipe.sourceUrl}` : ''}`
+${recipeContextSummary(recipe)}`
 
     const text = await geminiGenerateContent(c.env, [{ text: prompt }], {
       temperature: 0.2,
       json: true
     })
     const parsed = parseGeminiJson(text)
-    let methods = normalizeMethods(parsed)
-
-    // Garantisce metodi hintati dal titolo anche se il modello li omette
-    for (const hint of titleHints) {
-      if (!methods.some((m) => m.method === hint)) {
-        const labels = {
-          friggitrice_aria: 'Friggitrice ad aria',
-          forno: 'Forno',
-          padella: 'Padella',
-          bollitura: 'Bollitura',
-          vapore: 'Vapore',
-          grill: 'Grill',
-          microonde: 'Microonde'
-        }
-        methods.unshift({
-          id: crypto.randomUUID(),
-          method: hint,
-          label: labels[hint] || hint,
-          temperature: '',
-          time: '',
-          notes: 'Metodo indicato nel titolo della ricetta.',
-          differences: '',
-          recommended: true
-        })
-      } else {
-        methods = methods.map((m) =>
-          m.method === hint ? { ...m, recommended: true } : { ...m, recommended: false }
-        )
-      }
-    }
+    let methods = normalizeMethods(parsed).filter((m) => m.method !== 'altro' || m.method === focusMethod)
 
     if (focusMethod && !methods.some((m) => m.method === focusMethod)) {
-      return c.json({ error: `L'IA non ha prodotto indicazioni per ${focusMethod}` }, 502)
+      return c.json({ error: `L'IA non ha prodotto indicazioni per ${LABELS[focusMethod] || focusMethod}` }, 502)
     }
 
-    const preferred = titleHints[0] || methods.find((m) => m.recommended)?.method || focusMethod || null
-    if (focusMethod) {
-      methods = mergeMethods(recipe.cookingMethods || [], methods, preferred)
-    } else if (preferred) {
-      methods = methods.map((m) => ({ ...m, recommended: m.method === preferred }))
+    // Tapping one appliance only adds/refreshes that guide; "Aggiorna tutti" replaces the list
+    if (focusMethod) methods = mergeMethods(recipe.cookingMethods || [], methods, null)
+
+    // Recipe's own method: always present, params copied from the text
+    if (primary) {
+      let own = methods.find((m) => m.method === primary)
+      if (!own) {
+        own = {
+          id: crypto.randomUUID(),
+          method: primary,
+          label: LABELS[primary] || primary,
+          temperature: '',
+          time: '',
+          notes: 'Metodo indicato nella ricetta: segui i passi della preparazione.',
+          differences: '',
+          recommended: true
+        }
+        methods.unshift(own)
+      }
+      if (detected.params.temperature) own.temperature = detected.params.temperature
+      if (detected.params.time) own.time = detected.params.time
     }
 
-    const summary = String(parsed.summary || recipe.cookingMethodsSummary || '').trim()
+    // Recommended = the recipe's method; tapping an alternative never changes it
+    const previousRec = (recipe.cookingMethods || []).find((m) => m.recommended)?.method
+    const preferred =
+      primary || (previousRec ? normalizeMethodId(previousRec) : null) || methods[0]?.method || null
+    methods = methods.map((m) => ({ ...m, recommended: m.method === preferred }))
+
+    // A single-appliance answer talks about that appliance: keep the overall summary
+    const summary = String(
+      (focusMethod ? recipe.cookingMethodsSummary || parsed.summary : parsed.summary || recipe.cookingMethodsSummary) || ''
+    ).trim()
 
     let saved = false
     if (body.recipeId && canEditRecipe(user, recipe)) {
