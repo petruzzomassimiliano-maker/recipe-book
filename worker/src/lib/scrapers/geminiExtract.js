@@ -172,8 +172,9 @@ export async function parseRecipePhotoWithGemini(
   envOrKey,
   { imageBase64, mimeType = 'image/jpeg', sourceUrl = null }
 ) {
-  const prompt = `Sei un assistente di cucina. Analizza la FOTO di una ricetta (libro, quaderno, schermo, foglio stampato).
-Estrai la ricetta completa. Restituisci SOLO JSON con schema:
+  const isPdf = mimeType === 'application/pdf'
+  const prompt = `Sei un assistente di cucina. Analizza ${isPdf ? 'il documento PDF' : 'la FOTO'} di una ricetta (libro, quaderno, schermo, foglio stampato).
+Estrai la ricetta completa (se il PDF contiene più ricette, estrai solo la prima/principale). Restituisci SOLO JSON con schema:
 ${RECIPE_JSON_SCHEMA_HINT}
 
 Regole:
@@ -194,8 +195,8 @@ ${STEPS_READABILITY_RULES}`
     }
   ])
   const parsed = parseGeminiJson(text)
-  const draft = normalizeAiDraft(parsed, sourceUrl, 'photo')
-  draft.extractMethod = 'gemini-photo'
+  const draft = normalizeAiDraft(parsed, sourceUrl, isPdf ? 'pdf' : 'photo')
+  draft.extractMethod = isPdf ? 'gemini-pdf' : 'gemini-photo'
   return draft
 }
 

@@ -10,12 +10,13 @@ export function readAndCompressImage(file, { maxEdge = 1600, quality = 0.82 } = 
       reject(new Error('Nessun file'))
       return
     }
-    if (!/^image\/(jpeg|jpg|png|webp)$/i.test(file.type)) {
-      reject(new Error('Usa JPEG, PNG o WebP'))
+    // Phones may hand over HEIC/HEIF or an empty type: let the browser try to decode it
+    if (file.type && !file.type.startsWith('image/')) {
+      reject(new Error('Il file non è un’immagine'))
       return
     }
-    if (file.size > 12 * 1024 * 1024) {
-      reject(new Error('File troppo grande (max 12 MB)'))
+    if (file.size > 30 * 1024 * 1024) {
+      reject(new Error('File troppo grande (max 30 MB)'))
       return
     }
 
@@ -50,7 +51,13 @@ export function readAndCompressImage(file, { maxEdge = 1600, quality = 0.82 } = 
     }
     img.onerror = () => {
       URL.revokeObjectURL(objectUrl)
-      reject(new Error('Impossibile leggere l’immagine'))
+      reject(
+        new Error(
+          /hei[cf]/i.test(file.type) || /\.hei[cf]$/i.test(file.name || '')
+            ? 'Formato HEIC non supportato da questo browser: sul telefono scegli «Più compatibile» (JPEG) nelle impostazioni della fotocamera, oppure scatta direttamente dall’app.'
+            : 'Impossibile leggere l’immagine'
+        )
+      )
     }
     img.src = objectUrl
   })

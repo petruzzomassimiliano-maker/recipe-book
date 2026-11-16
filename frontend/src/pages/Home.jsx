@@ -160,17 +160,11 @@ export default function Home() {
               </h3>
               <p className="mt-1.5 text-sm text-stone-500 flex flex-wrap gap-x-2 gap-y-0.5">
                 {featured.servings ? <span>{featured.servings} porzioni</span> : null}
-                {featured.servings && (featured.difficulty || featured.caloriesPerServing != null) ? (
+                {featured.servings && featured.difficulty ? (
                   <span className="text-stone-300">·</span>
                 ) : null}
                 {featured.difficulty ? (
                   <span>{difficultyLabel[featured.difficulty] || featured.difficulty}</span>
-                ) : null}
-                {featured.caloriesPerServing != null ? (
-                  <>
-                    <span className="text-stone-300">·</span>
-                    <span>{featured.caloriesPerServing} kcal</span>
-                  </>
                 ) : null}
               </p>
               <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-primary">

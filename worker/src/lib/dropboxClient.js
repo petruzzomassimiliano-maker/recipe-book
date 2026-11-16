@@ -218,17 +218,4 @@ export class DropboxClient {
   async deleteRecipe(recipeId) {
     return this.deleteFile(`/recipes/recipe-${recipeId}.json`)
   }
-
-  // ── Nutrition cache operations ───────────────────────────────────────────
-
-  async getNutritionCache(hash) {
-    return this.readJSON(`/nutrition-cache/ingredient-${hash}.json`)
-  }
-
-  async saveNutritionCache(hash, data) {
-    return this.writeJSON(`/nutrition-cache/ingredient-${hash}.json`, {
-      ...data,
-      cachedAt: new Date().toISOString()
-    })
-  }
 }

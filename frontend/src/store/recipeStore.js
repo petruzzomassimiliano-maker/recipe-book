@@ -11,7 +11,6 @@ function toIndexShape(recipe) {
     servings: recipe.metadata?.servings ?? recipe.servings,
     difficulty: recipe.metadata?.difficulty ?? recipe.difficulty,
     imageUrl: recipe.imageUrl || null,
-    caloriesPerServing: recipe.nutritionInfo?.perServing?.calories ?? recipe.caloriesPerServing ?? null,
     createdAt: recipe.createdAt || null,
     updatedAt: recipe.updatedAt
   }

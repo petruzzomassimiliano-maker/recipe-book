@@ -19,6 +19,7 @@
 | **Riordino trascinando** | «Sessione 18» | ✅ Ingredienti e passi: maniglia ⋮⋮ (mouse + touch + frecce), rispetta le sezioni |
 | **Gemini recipe recognition** | «Sessione 3+» | ✅ Cascata in scraper |
 | **FatSecret integration** | — | ❌ Rimosso · DB locale + override utente |
+| **Calorie / nutrizione** | — | 🗑️ Rimossa in «Sessione 19» (pannello, calcolo automatico, kcal in elenco) |
 | **YouTube transcript parser** | «Sessione 5» + «17» | ✅ Sottotitoli (web → Android) + **Gemini guarda il video** se mancano |
 | **Shopping list feature** | «Sessione 3» + «12» | 🗑️ Rimossa in «Sessione 19» |
 | **Material Design 3 UI** | «Sessione X» | ⏳ Pending (mobile HIG/Material touch già applicati) |
@@ -33,6 +34,8 @@
 | **Invite link monouso** | «Sessione 8» + «10» | 🗑️ Rimosso in «Sessione 19» |
 | **Deploy prod** | «Sessione 10» + «12»–«17» | ✅ Cloudflare + repo GitHub |
 | **Accesso senza account + PIN** | «Sessione 19» | ✅ Lettura libera; modifiche/import/IA con `EDIT_PIN` |
+| **Export PDF ricetta** | «Sessione 19» | ✅ jsPDF lazy; condivisione nativa su smartphone, download su desktop |
+| **Import da PDF** | «Sessione 19» | ✅ Gemini legge il PDF (max 10 MB) |
 | **Snippet riusabili** | «Biblioteca codice critico» (fine file) | ✅ Pattern da copiare in altri progetti |
 
 ---
@@ -65,6 +68,12 @@ Eliminare gli utenti: chi apre il sito vede tutto senza autenticarsi. Modifiche 
 ### File modificati
 Worker: `middleware/auth.js`, `lib/editPin.js` (**nuovo**), `lib/rbac.js`, `lib/users.js`, `lib/familyDropbox.js`, `lib/dropboxClient.js`, `routes/{auth,recipes,gemini,nutrition,media,scrapers,youtube,settings,health}.js`, `index.js`; eliminati `routes/{users,shopping}.js`, `lib/password.js`.
 Frontend: `App.jsx`, `store/authStore.js`, `services/{api,auth,recipes}.js`, `components/common/{AppLayout,RequireEdit,UnlockDialog}.jsx` (**nuovi**), `Navbar`, `MobileTabBar`, `RecipeDetailPane`, `RecipeForm`, `RecipeList`, `SplitRecipePicker`, pagine `Home`, `Recipes`, `Settings`, `ImportRecipe`, `NotFound`; eliminati Login/Setup/Invite/ChangePassword/DropboxCallback/ShoppingList e relativi store/servizi.
+
+### Aggiunte (stessa sessione, seconda richiesta)
+- **Tolte le kcal:** rimossi pannello nutrizione, route `/api/nutrition`, `lib/nutrition/*`, calcolo automatico al salvataggio e kcal in elenco/Home. I vecchi `nutritionInfo` restano nei file finché la ricetta non viene modificata.
+- **Foto da smartphone:** Importa aveva un solo input con `capture` → su Android si apriva solo la fotocamera (niente galleria): ora «Scatta foto» + «Scegli foto o PDF». `accept="image/*"` (prima erano escluse HEIC/HEIF e file con type vuoto), messaggio chiaro se il browser non decodifica HEIC. Nel form l'anteprima `data:` finiva in `imageUrl` e, se l'upload falliva, veniva salvata su Dropbox e nella bozza localStorage → ora anteprima solo locale. `<img>` nascosto dopo un URL rotto restava nascosto anche con la foto nuova → `key`.
+- **Import PDF:** `POST /api/gemini/from-photo` accetta `application/pdf` (max ~10 MB) → Gemini estrae la ricetta.
+- **Export PDF:** `utils/recipePdf.js` (jsPDF 4, import dinamico): foto, porzioni scelte, ingredienti/passi con sezioni, metodi di cottura, fonte, piè di pagina. Su smartphone `navigator.share` con file, altrimenti download. Font standard = Windows-1252: caratteri tipografici mappati, emoji rimosse.
 
 **Deploy:** richiede il secret `EDIT_PIN` (`cd worker && npx wrangler secret put EDIT_PIN`). Dati utenti/liste spesa su Dropbox lasciati intatti (non più usati).
 

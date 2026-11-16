@@ -184,6 +184,8 @@ export default function RecipeForm({
 
   const [imageBusy, setImageBusy] = useState(false)
   const [imageError, setImageError] = useState(null)
+  // Local preview while uploading — never stored in the form/draft (data: URLs are huge)
+  const [imagePreview, setImagePreview] = useState(null)
   const fileInputRef = useRef(null)
   const cameraInputRef = useRef(null)
 
@@ -198,7 +200,7 @@ export default function RecipeForm({
     setImageBusy(true)
     try {
       const { base64, mimeType, previewUrl } = await readAndCompressImage(file)
-      update({ imageUrl: previewUrl })
+      setImagePreview(previewUrl)
       const res = await uploadRecipeImage({ imageBase64: base64, mimeType })
       const url = res.data?.imageUrl
       if (!url) throw new Error('Upload senza URL')
@@ -206,6 +208,7 @@ export default function RecipeForm({
     } catch (err) {
       setImageError(err.message || 'Caricamento foto fallito')
     } finally {
+      setImagePreview(null)
       setImageBusy(false)
     }
   }
@@ -228,7 +231,7 @@ export default function RecipeForm({
         cuisine: form.cuisine,
         tags: form.tags,
         notes: form.notes,
-        imageUrl: form.imageUrl.trim() || null,
+        imageUrl: (form.imageUrl.trim().startsWith('data:') ? '' : form.imageUrl.trim()) || null,
         ingredients: form.ingredients,
         steps: form.steps
       })
@@ -266,6 +269,8 @@ export default function RecipeForm({
     clear()
     onCancel?.()
   }
+
+  const shownImage = imagePreview || form.imageUrl.trim()
 
   const looksFilled =
     !!form.title?.trim() ||
@@ -386,12 +391,13 @@ export default function RecipeForm({
             <span className={fieldLabelClass}>Foto ricetta</span>
             <div
               className={`relative overflow-hidden rounded-2xl border border-dashed border-stone-300 bg-stone-50 ${
-                form.imageUrl.trim() ? 'border-solid border-stone-200' : ''
+                shownImage ? 'border-solid border-stone-200' : ''
               }`}
             >
-              {form.imageUrl.trim() ? (
+              {shownImage ? (
                 <img
-                  src={form.imageUrl.trim()}
+                  key={shownImage}
+                  src={shownImage}
                   alt="Anteprima ricetta"
                   className="w-full aspect-[4/3] object-cover"
                   onError={(e) => {
@@ -441,7 +447,7 @@ export default function RecipeForm({
             <input
               ref={cameraInputRef}
               type="file"
-              accept="image/jpeg,image/png,image/webp"
+              accept="image/*"
               capture="environment"
               className="hidden"
               onChange={(e) => {
@@ -453,7 +459,7 @@ export default function RecipeForm({
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/jpeg,image/png,image/webp"
+              accept="image/*"
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0]

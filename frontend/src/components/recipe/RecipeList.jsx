@@ -10,7 +10,6 @@ function RecipeMeta({ recipe }) {
   const bits = []
   if (recipe.servings) bits.push(`${recipe.servings} porz.`)
   if (recipe.difficulty) bits.push(difficultyLabel[recipe.difficulty] || recipe.difficulty)
-  if (recipe.caloriesPerServing != null) bits.push(`${recipe.caloriesPerServing} kcal`)
   return bits.join(' · ') || '—'
 }
 

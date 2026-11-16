@@ -6,7 +6,6 @@ import healthRoutes from './routes/health.js'
 import recipeRoutes from './routes/recipes.js'
 import scraperRoutes from './routes/scrapers.js'
 import geminiRoutes from './routes/gemini.js'
-import nutritionRoutes from './routes/nutrition.js'
 import youtubeRoutes from './routes/youtube.js'
 import settingsRoutes from './routes/settings.js'
 import mediaRoutes from './routes/media.js'
@@ -46,7 +45,6 @@ app.route('/api/auth', authRoutes)
 app.route('/api/recipes', recipeRoutes)
 app.route('/api/scraper', scraperRoutes)
 app.route('/api/gemini', geminiRoutes)
-app.route('/api/nutrition', nutritionRoutes)
 app.route('/api/youtube', youtubeRoutes)
 app.route('/api/settings', settingsRoutes)
 app.route('/api/media', mediaRoutes)

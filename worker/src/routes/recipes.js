@@ -1,7 +1,6 @@
 import { Hono } from 'hono'
 import { familyMiddleware, requireEditor } from '../middleware/auth.js'
 import { coerceQuantity } from '../lib/scrapers/_base.js'
-import { calculateRecipeNutrition } from '../lib/nutrition/calculate.js'
 
 const recipes = new Hono()
 // Lettura libera; creazione/modifica/eliminazione con PIN di famiglia
@@ -28,7 +27,6 @@ function toIndexEntry(recipe) {
     servings: recipe.metadata?.servings || 1,
     difficulty: recipe.metadata?.difficulty || 'easy',
     imageUrl: recipe.imageUrl || null,
-    caloriesPerServing: recipe.nutritionInfo?.perServing?.calories ?? null,
     createdAt: recipe.createdAt || null,
     updatedAt: recipe.updatedAt
   }
@@ -59,7 +57,6 @@ function normalizeRecipe(input, { id, author, createdAt }) {
       quantity: coerceQuantity(i.quantity),
       unit: (i.unit || '').trim(),
       notes: i.notes || '',
-      nutritionId: i.nutritionId || null,
       ...sectionField(i)
     }))
   const steps = (input.steps || [])
@@ -80,16 +77,6 @@ function normalizeRecipe(input, { id, author, createdAt }) {
     updatedAt: now,
     ingredients,
     steps,
-    nutritionInfo: {
-      servings,
-      perServing: input.nutritionInfo?.perServing || null,
-      perRecipe: input.nutritionInfo?.perRecipe || null,
-      source: input.nutritionInfo?.source || 'manual',
-      lastCalculated: input.nutritionInfo?.lastCalculated || null,
-      lines: Array.isArray(input.nutritionInfo?.lines) ? input.nutritionInfo.lines : [],
-      skippedCount: Number(input.nutritionInfo?.skippedCount) || 0,
-      matchedCount: Number(input.nutritionInfo?.matchedCount) || 0
-    },
     metadata: {
       tags: parseTags(input.tags ?? input.metadata?.tags),
       servings,
@@ -115,44 +102,6 @@ async function upsertIndex(client, recipe) {
   return next
 }
 
-/** Auto-calcola calorie (DB locale + custom utente). Non blocca il salvataggio. */
-async function applyAutoNutrition(client, recipe) {
-  try {
-    await client.createFolderIfNotExists('/nutrition-cache')
-    const result = await calculateRecipeNutrition(recipe, { dbxClient: client })
-    const ingredients = (recipe.ingredients || []).map((ing) => {
-      const line = result.lines.find((l) => l.ingredientId === ing.id)
-      return {
-        ...ing,
-        nutritionId: line?.nutritionId || ing.nutritionId || null
-      }
-    })
-    return {
-      ...recipe,
-      ingredients,
-      nutritionInfo: {
-        servings: result.servings,
-        perServing: result.perServing,
-        perRecipe: result.perRecipe,
-        source: result.source,
-        lastCalculated: result.lastCalculated,
-        lines: result.lines,
-        skippedCount: result.skippedCount,
-        matchedCount: result.matchedCount
-      }
-    }
-  } catch (err) {
-    console.warn('[recipes] auto nutrition failed:', err.message)
-    return recipe
-  }
-}
-
-function ingredientsSignature(recipe) {
-  return JSON.stringify(
-    (recipe?.ingredients || []).map((i) => [i.name, i.quantity, i.unit])
-  )
-}
-
 recipes.get('/', async (c) => {
   const q = (c.req.query('q') || '').trim().toLowerCase()
   const index = await dbx(c).getRecipesIndex()
@@ -175,13 +124,20 @@ function toPublicEntry(entry) {
     isPrivate: _p,
     sharedWithUserIds: _w,
     sharedWith: _sw,
+    caloriesPerServing: _kcal,
     ...rest
   } = entry || {}
   return rest
 }
 
 function toPublicRecipe(recipe) {
-  const { author: _a, authorDisplayName: _n, sharedWith: _sw, ...rest } = recipe
+  const {
+    author: _a,
+    authorDisplayName: _n,
+    sharedWith: _sw,
+    nutritionInfo: _ni,
+    ...rest
+  } = recipe
   const {
     isShared: _s,
     isPrivate: _p,
@@ -203,8 +159,7 @@ recipes.post('/', requireEditor, async (c) => {
   if (!body?.title?.trim()) return c.json({ error: 'Title is required' }, 400)
 
   const client = dbx(c)
-  let recipe = normalizeRecipe(body, { id: crypto.randomUUID(), author: FAMILY_AUTHOR })
-  recipe = await applyAutoNutrition(client, recipe)
+  const recipe = normalizeRecipe(body, { id: crypto.randomUUID(), author: FAMILY_AUTHOR })
   await client.saveRecipe(recipe.id, recipe)
   await upsertIndex(client, recipe)
   return c.json({ success: true, data: toPublicRecipe(recipe) }, 201)
@@ -218,12 +173,11 @@ recipes.put('/:id', requireEditor, async (c) => {
   const body = await c.req.json().catch(() => null)
   if (!body?.title?.trim()) return c.json({ error: 'Title is required' }, 400)
 
-  let recipe = normalizeRecipe(
+  const recipe = normalizeRecipe(
     {
       ...body,
       cookingMethods: body.cookingMethods ?? existing.cookingMethods,
-      cookingMethodsSummary: body.cookingMethodsSummary ?? existing.cookingMethodsSummary,
-      nutritionInfo: body.nutritionInfo ?? existing.nutritionInfo
+      cookingMethodsSummary: body.cookingMethodsSummary ?? existing.cookingMethodsSummary
     },
     {
       id: existing.id,
@@ -231,16 +185,6 @@ recipes.put('/:id', requireEditor, async (c) => {
       createdAt: existing.createdAt
     }
   )
-
-  const ingredientsChanged = ingredientsSignature(recipe) !== ingredientsSignature(existing)
-  const servingsChanged =
-    Number(recipe.metadata?.servings) !== Number(existing.metadata?.servings)
-  const wasManual = existing.nutritionInfo?.source === 'manual'
-
-  // Ricalcola se ingredienti/porzioni cambiano, o se non c'era ancora un totale manuale
-  if (ingredientsChanged || servingsChanged || !wasManual || !existing.nutritionInfo?.perServing) {
-    recipe = await applyAutoNutrition(client, recipe)
-  }
 
   await client.saveRecipe(recipe.id, recipe)
   await upsertIndex(client, recipe)

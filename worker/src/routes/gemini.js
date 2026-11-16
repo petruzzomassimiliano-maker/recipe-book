@@ -307,7 +307,7 @@ ${
 
 /**
  * POST /api/gemini/from-photo
- * Body: { imageBase64, mimeType? } — foto ricetta → draft (come scraper)
+ * Body: { imageBase64, mimeType? } — foto o PDF di una ricetta → draft (come scraper)
  */
 gemini.post('/from-photo', async (c) => {
   try {
@@ -318,13 +318,14 @@ gemini.post('/from-photo', async (c) => {
     if (!imageBase64) return c.json({ error: 'Immagine obbligatoria (imageBase64)' }, 400)
 
     const mimeType = String(body.mimeType || 'image/jpeg').toLowerCase()
-    if (!/^image\/(jpeg|jpg|png|webp)$/.test(mimeType)) {
-      return c.json({ error: 'Formato non supportato (jpeg, png, webp)' }, 400)
+    const isPdf = mimeType === 'application/pdf'
+    if (!isPdf && !/^image\/(jpeg|jpg|png|webp)$/.test(mimeType)) {
+      return c.json({ error: 'Formato non supportato (jpeg, png, webp o pdf)' }, 400)
     }
 
-    // ~6 MB base64 ceiling
-    if (imageBase64.length > 8_000_000) {
-      return c.json({ error: 'Immagine troppo grande (max ~6 MB)' }, 413)
+    // base64 ceiling: ~6 MB images (client resizes them), ~10 MB PDF
+    if (imageBase64.length > (isPdf ? 14_000_000 : 8_000_000)) {
+      return c.json({ error: isPdf ? 'PDF troppo grande (max 10 MB)' : 'Immagine troppo grande (max ~6 MB)' }, 413)
     }
 
     if (!collectGeminiKeys(c.env).length) {
@@ -339,7 +340,7 @@ gemini.post('/from-photo', async (c) => {
     })
 
     if (!draft.title && !draft.ingredients?.length) {
-      return c.json({ error: 'Nessuna ricetta riconosciuta nella foto' }, 422)
+      return c.json({ error: isPdf ? 'Nessuna ricetta riconosciuta nel PDF' : 'Nessuna ricetta riconosciuta nella foto' }, 422)
     }
 
     return c.json({
@@ -349,7 +350,7 @@ gemini.post('/from-photo', async (c) => {
   } catch (err) {
     console.error('[gemini/from-photo]', err.message)
     const status = err.status === 429 ? 429 : 500
-    return c.json({ error: err.message || 'Analisi foto fallita' }, status)
+    return c.json({ error: err.message || 'Analisi file fallita' }, status)
   }
 })
 

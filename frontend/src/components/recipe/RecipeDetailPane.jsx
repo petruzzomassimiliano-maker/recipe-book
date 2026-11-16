@@ -1,17 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useEditAccess } from '../../store/authStore.js'
+import { useAuthStore, useEditAccess } from '../../store/authStore.js'
 import { useRecipeById } from '../../hooks/useRecipeById.js'
 import { useRecipes } from '../../hooks/useRecipes.js'
 import StepInstruction from './StepInstruction.jsx'
 import CookingMethodsSection from './CookingMethodsSection.jsx'
-import NutritionPanel from './NutritionPanel.jsx'
 import RecipeAiChat from './RecipeAiChat.jsx'
 import { analyzeCookingMethods } from '../../services/gemini.js'
-import { calculateRecipeNutrition, saveManualNutrition, upsertCustomFood } from '../../services/nutrition.js'
 import { formatScaledQty, scaleIngredients } from '../../utils/scaleIngredients.js'
 import { groupStepsForDisplay } from '../../utils/groupSteps.js'
 import { groupBySection } from '../../utils/recipeSections.js'
+import { shareRecipePdf } from '../../utils/recipePdf.js'
 
 const SECTION_HEADING_CLASS =
   'text-[13px] font-semibold uppercase tracking-wide text-primary/90 pb-1.5 mb-1 border-b border-primary/15'
@@ -39,13 +38,13 @@ export default function RecipeDetailPane({
   const { deleteRecipe } = useRecipes()
 
   const [actionMsg, setActionMsg] = useState(null)
+  const [pdfBusy, setPdfBusy] = useState(false)
+  const familyAppName = useAuthStore((s) => s.familyAppName)
   const [servings, setServings] = useState(null)
   const [chatOpen, setChatOpen] = useState(false)
   const [methodsLoading, setMethodsLoading] = useState(false)
   const [methodsError, setMethodsError] = useState(null)
   const [methodsFocus, setMethodsFocus] = useState(null)
-  const [nutritionLoading, setNutritionLoading] = useState(false)
-  const [nutritionError, setNutritionError] = useState(null)
   const [removing, setRemoving] = useState(false)
   const [checkedIng, setCheckedIng] = useState(() => new Set())
   const [moreOpen, setMoreOpen] = useState(false)
@@ -109,6 +108,19 @@ export default function RecipeDetailPane({
     }
   })
 
+  const handlePdf = async () => {
+    if (!current || pdfBusy) return
+    setActionMsg(null)
+    setPdfBusy(true)
+    try {
+      await shareRecipePdf(current, { servings: servings ?? baseServings, appName: familyAppName })
+    } catch (err) {
+      setActionMsg(`PDF non riuscito: ${err.message}`)
+    } finally {
+      setPdfBusy(false)
+    }
+  }
+
   const bumpServings = (delta) => {
     setServings((prev) => Math.max(1, Math.min(99, (prev ?? baseServings) + delta)))
   }
@@ -162,96 +174,6 @@ export default function RecipeDetailPane({
     } finally {
       setMethodsLoading(false)
       setMethodsFocus(null)
-    }
-  })
-
-  const handleCalculateNutrition = async () => {
-    if (!current) return
-    setNutritionError(null)
-    setNutritionLoading(true)
-    try {
-      const res = await calculateRecipeNutrition(current.id)
-      if (res.data?.recipe) {
-        setRecipe(res.data.recipe)
-      } else {
-        setRecipe({
-          ...current,
-          nutritionInfo: {
-            servings: res.data.servings,
-            perServing: res.data.perServing,
-            perRecipe: res.data.perRecipe,
-            source: res.data.source,
-            lastCalculated: res.data.lastCalculated,
-            lines: res.data.lines,
-            skippedCount: res.data.skippedCount,
-            matchedCount: res.data.matchedCount
-          }
-        })
-      }
-    } catch (err) {
-      setNutritionError(err.message)
-    } finally {
-      setNutritionLoading(false)
-    }
-  }
-
-  const handleSaveManualNutrition = withEdit(async (perServing) => {
-    if (!current) return
-    setNutritionError(null)
-    setNutritionLoading(true)
-    try {
-      const res = await saveManualNutrition(current.id, perServing)
-      if (res.data?.recipe) {
-        setRecipe(res.data.recipe)
-      } else {
-        setRecipe({
-          ...current,
-          nutritionInfo: {
-            ...(current.nutritionInfo || {}),
-            servings: res.data.servings,
-            perServing: res.data.perServing,
-            perRecipe: res.data.perRecipe,
-            source: 'manual',
-            lastCalculated: res.data.lastCalculated
-          }
-        })
-      }
-    } catch (err) {
-      setNutritionError(err.message)
-    } finally {
-      setNutritionLoading(false)
-    }
-  })
-
-  const handleAddCustomFood = withEdit(async (payload) => {
-    if (!current) return
-    setNutritionError(null)
-    setNutritionLoading(true)
-    try {
-      await upsertCustomFood(payload)
-      const res = await calculateRecipeNutrition(current.id)
-      if (res.data?.recipe) {
-        setRecipe(res.data.recipe)
-      } else {
-        setRecipe({
-          ...current,
-          nutritionInfo: {
-            servings: res.data.servings,
-            perServing: res.data.perServing,
-            perRecipe: res.data.perRecipe,
-            source: res.data.source,
-            lastCalculated: res.data.lastCalculated,
-            lines: res.data.lines,
-            skippedCount: res.data.skippedCount,
-            matchedCount: res.data.matchedCount
-          }
-        })
-      }
-    } catch (err) {
-      setNutritionError(err.message)
-      throw err
-    } finally {
-      setNutritionLoading(false)
     }
   })
 
@@ -351,6 +273,15 @@ export default function RecipeDetailPane({
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="btn-primary !py-2.5 !px-4 text-sm"
+            onClick={handlePdf}
+            disabled={pdfBusy}
+            title="Crea un PDF della ricetta da salvare o condividere"
+          >
+            {pdfBusy ? 'Creo PDF…' : 'PDF / Condividi'}
+          </button>
           <Link
             to={`/recipes/${recipeId}/edit`}
             className="btn-secondary !py-2.5 !px-4 text-sm text-center"
@@ -440,7 +371,7 @@ export default function RecipeDetailPane({
             href={`#${aid('extra')}`}
             className="shrink-0 inline-flex items-center min-h-[40px] px-3.5 rounded-full bg-white border border-stone-200 text-sm font-medium text-stone-500"
           >
-            Extra
+            Cottura
           </a>
         </div>
       </nav>
@@ -617,14 +548,6 @@ export default function RecipeDetailPane({
           onSelectAppliance={handleSelectAppliance}
         />
 
-        <NutritionPanel
-          nutritionInfo={current.nutritionInfo}
-          loading={nutritionLoading}
-          error={nutritionError}
-          onCalculate={handleCalculateNutrition}
-          onSaveManual={handleSaveManualNutrition}
-          onAddCustomFood={handleAddCustomFood}
-        />
       </div>
 
       {current.sourceUrl && (

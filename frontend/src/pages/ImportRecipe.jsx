@@ -13,9 +13,28 @@ function formPersistKey(url) {
   return draftKey(`recipe-form:import:${url || 'pending'}`)
 }
 
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = String(reader.result || '')
+      resolve(result.includes(',') ? result.split(',')[1] : result)
+    }
+    reader.onerror = () => reject(new Error('Lettura file fallita'))
+    reader.readAsDataURL(file)
+  })
+}
+
+const MAX_PDF_BYTES = 10 * 1024 * 1024
+
+function isPdf(file) {
+  return file?.type === 'application/pdf' || /\.pdf$/i.test(file?.name || '')
+}
+
 export default function ImportRecipe() {
   const navigate = useNavigate()
   const { addRecipe } = useRecipes()
+  const cameraRef = useRef(null)
   const fileRef = useRef(null)
   const {
     value: page,
@@ -40,6 +59,7 @@ export default function ImportRecipe() {
   const manualTranscript = page.manualTranscript || ''
   const needTranscript = Boolean(page.needTranscript)
   const youtube = isYoutubeUrl(url)
+  const fromFile = /^(photo|pdf):/.test(url)
 
   const applyScrape = (data, sourceUrl) => {
     const nextScrape = {
@@ -61,7 +81,7 @@ export default function ImportRecipe() {
 
   const handleFetch = async (e) => {
     e.preventDefault()
-    if (!url.trim() || url.startsWith('photo:')) {
+    if (!url.trim() || fromFile) {
       setError('Incolla un URL di ricetta o un video YouTube')
       return
     }
@@ -91,24 +111,31 @@ export default function ImportRecipe() {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
-    if (!/^image\/(jpeg|jpg|png|webp)$/i.test(file.type)) {
-      setError('Usa una foto JPEG, PNG o WebP')
+    const pdf = isPdf(file)
+    if (!pdf && file.type && !file.type.startsWith('image/')) {
+      setError('Scegli una foto o un PDF')
       return
     }
-    if (file.size > 12 * 1024 * 1024) {
-      setError('Foto troppo grande (max 12 MB)')
+    if (pdf && file.size > MAX_PDF_BYTES) {
+      setError('PDF troppo grande (max 10 MB)')
       return
     }
     setError(null)
     setPhotoLoading(true)
     try {
-      // Resize before upload: phone photos easily exceed the Worker limit as base64.
-      // 2000px keeps small recipe text legible for Gemini.
-      const { base64, mimeType } = await readAndCompressImage(file, { maxEdge: 2000, quality: 0.85 })
-      const res = await extractRecipeFromPhoto({ imageBase64: base64, mimeType })
-      applyScrape(res.data, res.data?.sourceUrl || `photo:${file.name}`)
+      let payload
+      if (pdf) {
+        payload = { imageBase64: await readFileAsBase64(file), mimeType: 'application/pdf' }
+      } else {
+        // Resize before upload: phone photos easily exceed the Worker limit as base64.
+        // 2000px keeps small recipe text legible for Gemini.
+        const { base64, mimeType } = await readAndCompressImage(file, { maxEdge: 2000, quality: 0.85 })
+        payload = { imageBase64: base64, mimeType }
+      }
+      const res = await extractRecipeFromPhoto(payload)
+      applyScrape(res.data, res.data?.sourceUrl || `${pdf ? 'pdf' : 'photo'}:${file.name}`)
     } catch (err) {
-      setError(err.message || 'Analisi foto fallita')
+      setError(err.message || (pdf ? 'Analisi PDF fallita' : 'Analisi foto fallita'))
     } finally {
       setPhotoLoading(false)
     }
@@ -117,8 +144,10 @@ export default function ImportRecipe() {
   const handleSave = async (payload) => {
     const saved = await addRecipe({
       ...payload,
-      sourceUrl: scrape?.sourceUrl || (url.startsWith('photo:') ? null : url) || null,
-      sourceProvider: scrape?.sourceProvider || (youtube ? 'youtube' : url.startsWith('photo:') ? 'photo' : 'website'),
+      sourceUrl: scrape?.sourceUrl || (fromFile ? null : url) || null,
+      sourceProvider:
+        scrape?.sourceProvider ||
+        (youtube ? 'youtube' : url.startsWith('pdf:') ? 'pdf' : url.startsWith('photo:') ? 'photo' : 'website'),
       imageUrl: payload.imageUrl || scrape?.imageUrl || null
     })
     clearDraft(formPersistKey(url))
@@ -170,7 +199,7 @@ export default function ImportRecipe() {
               <input
                 className="input-field mt-1"
                 type="url"
-                value={url.startsWith('photo:') ? '' : url}
+                value={fromFile ? '' : url}
                 onChange={(e) =>
                   setPage((prev) => ({
                     ...prev,
@@ -210,7 +239,7 @@ export default function ImportRecipe() {
             <button
               type="submit"
               className="btn-primary"
-              disabled={busy || !url.trim() || url.startsWith('photo:')}
+              disabled={busy || !url.trim() || fromFile}
               aria-busy={urlLoading}
             >
               {urlLoading
@@ -229,26 +258,49 @@ export default function ImportRecipe() {
           </form>
 
           <div className="card p-5 sm:p-6 mb-8 space-y-3 max-w-3xl">
-            <h2 className="text-sm font-semibold text-stone-800">Oppure da foto</h2>
+            <h2 className="text-sm font-semibold text-stone-800">Oppure da foto o PDF</h2>
             <p className="text-xs text-stone-500">
-              Scatta o carica una foto della ricetta (max 6 MB). Gemini legge ingredienti e passi.
+              Scatta una foto della ricetta (libro, quaderno, schermo) o scegli un’immagine / un PDF
+              (max 10 MB). Gemini legge ingredienti e passi.
             </p>
             <input
-              ref={fileRef}
+              ref={cameraRef}
               type="file"
-              accept="image/jpeg,image/png,image/webp"
+              accept="image/*"
               capture="environment"
               className="hidden"
               onChange={handlePhoto}
             />
-            <button
-              type="button"
-              className="btn-secondary"
-              disabled={busy}
-              onClick={() => fileRef.current?.click()}
-            >
-              {photoLoading ? 'Analisi foto…' : 'Carica / scatta foto'}
-            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*,application/pdf,.pdf"
+              className="hidden"
+              onChange={handlePhoto}
+            />
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={busy}
+                onClick={() => cameraRef.current?.click()}
+              >
+                Scatta foto
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={busy}
+                onClick={() => fileRef.current?.click()}
+              >
+                Scegli foto o PDF
+              </button>
+            </div>
+            {photoLoading && (
+              <p className="text-xs text-stone-500" aria-live="polite">
+                Analisi in corso… può servire qualche decina di secondi.
+              </p>
+            )}
           </div>
         </>
       )}
