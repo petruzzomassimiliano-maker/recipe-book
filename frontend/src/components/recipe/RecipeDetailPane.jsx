@@ -6,7 +6,10 @@ import { useRecipes } from '../../hooks/useRecipes.js'
 import StepInstruction from './StepInstruction.jsx'
 import CookingMethodsSection from './CookingMethodsSection.jsx'
 import RecipeAiChat from './RecipeAiChat.jsx'
-import { analyzeCookingMethods } from '../../services/gemini.js'
+import StorageSection from './StorageSection.jsx'
+import { analyzeCookingMethods, generateStorageAdvice } from '../../services/gemini.js'
+import { getRecipe } from '../../services/recipes.js'
+import { useRecipeStore } from '../../store/recipeStore.js'
 import { formatScaledQty, scaleIngredients } from '../../utils/scaleIngredients.js'
 import { groupStepsForDisplay } from '../../utils/groupSteps.js'
 import { groupBySection } from '../../utils/recipeSections.js'
@@ -39,6 +42,9 @@ export default function RecipeDetailPane({
 
   const [actionMsg, setActionMsg] = useState(null)
   const [pdfBusy, setPdfBusy] = useState(false)
+  const [storageLoading, setStorageLoading] = useState(false)
+  const [storageError, setStorageError] = useState(null)
+  const [storagePending, setStoragePending] = useState(false)
   const familyAppName = useAuthStore((s) => s.familyAppName)
   const [servings, setServings] = useState(null)
   const [chatOpen, setChatOpen] = useState(false)
@@ -67,6 +73,7 @@ export default function RecipeDetailPane({
     setCheckedIng(new Set())
     setMoreOpen(false)
     setActionMsg(null)
+    setStorageError(null)
   }, [recipeId])
 
   const scaledIngredients = useMemo(() => {
@@ -105,6 +112,61 @@ export default function RecipeDetailPane({
       // ignore
     } finally {
       setRemoving(false)
+    }
+  })
+
+  const applyStorage = (storage) => {
+    setRecipe((prev) => (prev && prev.id === recipeId ? { ...prev, storage } : prev))
+    const cached = useRecipeStore.getState().getCachedRecipe(recipeId)
+    if (cached) useRecipeStore.getState().cacheRecipe({ ...cached, storage })
+  }
+
+  // Just saved → the Worker is generating storage advice in the background: re-check a few times
+  const justSaved =
+    !!current && !current.storage && Date.now() - (Date.parse(current.updatedAt || 0) || 0) < 90_000
+  useEffect(() => {
+    if (!justSaved) {
+      setStoragePending(false)
+      return undefined
+    }
+    setStoragePending(true)
+    let tries = 0
+    let stopped = false
+    const timer = setInterval(async () => {
+      tries += 1
+      try {
+        const res = await getRecipe(recipeId)
+        if (!stopped && res.data?.storage) {
+          applyStorage(res.data.storage)
+          clearInterval(timer)
+          setStoragePending(false)
+          return
+        }
+      } catch {
+        // keep trying
+      }
+      if (tries >= 8) {
+        clearInterval(timer)
+        if (!stopped) setStoragePending(false)
+      }
+    }, 4000)
+    return () => {
+      stopped = true
+      clearInterval(timer)
+    }
+  }, [recipeId, justSaved]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleGenerateStorage = withEdit(async () => {
+    if (!current || storageLoading) return
+    setStorageError(null)
+    setStorageLoading(true)
+    try {
+      const res = await generateStorageAdvice(current.id)
+      applyStorage(res.data.storage)
+    } catch (err) {
+      setStorageError(err.message)
+    } finally {
+      setStorageLoading(false)
     }
   })
 
@@ -368,6 +430,12 @@ export default function RecipeDetailPane({
             Preparazione
           </a>
           <a
+            href={`#${aid('conservazione')}`}
+            className="shrink-0 inline-flex items-center min-h-[40px] px-3.5 rounded-full bg-white border border-stone-200 text-sm font-medium text-stone-500"
+          >
+            Conservazione
+          </a>
+          <a
             href={`#${aid('extra')}`}
             className="shrink-0 inline-flex items-center min-h-[40px] px-3.5 rounded-full bg-white border border-stone-200 text-sm font-medium text-stone-500"
           >
@@ -536,7 +604,18 @@ export default function RecipeDetailPane({
         </section>
       </div>
 
-      <div id={aid('extra')} className="mt-6 space-y-4 scroll-mt-24">
+      <div className="mt-6">
+        <StorageSection
+          id={aid('conservazione')}
+          storage={current.storage}
+          pending={storagePending}
+          loading={storageLoading}
+          error={storageError}
+          onGenerate={handleGenerateStorage}
+        />
+      </div>
+
+      <div id={aid('extra')} className="mt-4 space-y-4 scroll-mt-24">
         <CookingMethodsSection
           recipe={current}
           methods={current.cookingMethods || []}

@@ -198,6 +198,22 @@ export async function buildRecipePdf(recipe, { servings, appName = 'Recipe Book'
     }
   }
 
+  // ── Storage advice (if generated) ──
+  const st = recipe.storage
+  if (st && (st.fridge?.how || st.freezer?.how || st.room?.how)) {
+    heading('Come conservarla')
+    if (st.warning) write(`Attenzione: ${st.warning}`, { size: 10.5, style: 'bold' })
+    for (const [key, label] of [['fridge', 'Frigorifero'], ['freezer', 'Congelatore'], ['room', 'Temperatura ambiente']]) {
+      const p = st[key] || {}
+      const ok = p.ok !== false && (p.duration || p.how)
+      write(`${label}: ${ok ? p.duration || 'sì' : 'sconsigliato'}`, { size: 11, style: 'bold' })
+      if (p.how) write(p.how, { size: 10.5, indent: 2 })
+      if (key === 'freezer' && ok && p.thaw) write(`Scongelare: ${p.thaw}`, { size: 10.5, indent: 2 })
+      y += 1
+    }
+    if (st.reheat) write(`Per riscaldare: ${st.reheat}`, { size: 10.5 })
+  }
+
   if (recipe.sourceUrl) {
     y += 3
     write(`Fonte: ${recipe.sourceUrl}`, { size: 9, color: MUTED })

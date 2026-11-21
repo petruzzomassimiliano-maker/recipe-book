@@ -36,7 +36,23 @@
 | **Accesso senza account + PIN** | «Sessione 19» | ✅ Lettura libera; modifiche/import/IA con `EDIT_PIN` |
 | **Export PDF ricetta** | «Sessione 19» | ✅ jsPDF lazy; condivisione nativa su smartphone, download su desktop |
 | **Import da PDF** | «Sessione 19» | ✅ Gemini legge il PDF (max 10 MB) |
+| **Come conservarla** | «Sessione 20» | ✅ Gemini in background al salvataggio; sezione in scheda + PDF |
 | **Snippet riusabili** | «Biblioteca codice critico» (fine file) | ✅ Pattern da copiare in altri progetti |
+
+---
+
+## Sessione 20 — 2026-11-21 — «Come conservarla» (frigo, congelatore, ambiente)
+
+### Segnalazione
+Quando si salva una ricetta, Gemini deve dire come conservarla e per quanto (frigo, congelatore…), in una sezione della pagina ricetta.
+
+### Soluzione
+- `worker/src/lib/storageAdvice.js`: prompt prudente (linee guida EFSA/Ministero della Salute: cotti 2-3 gg, pesce/uova crude/creme 1-2, ambiente max 2 h, riso/pasta riscaldati una volta), JSON `{room, fridge, freezer{thaw}, reheat, tips[], warning}` normalizzato, `sig` = SHA-256 di titolo+ingredienti+passi.
+- `POST /api/recipes` e `PUT` (se `sig` cambia): generazione **in background** con `executionCtx.waitUntil` → il salvataggio non rallenta; prima di scrivere rilegge la ricetta e salva solo se il contenuto non è cambiato nel frattempo. Il `PUT` conserva `storage` se la firma è uguale (porzioni/tag/foto non la cambiano).
+- `POST /api/gemini/storage {recipeId}` (PIN): genera subito (ricette vecchie / «Rigenera»).
+- Frontend `StorageSection.jsx`: tra Preparazione e «Come cuocerla», chip «Conservazione» nel menu della scheda; 3 schede (Frigorifero, Congelatore, Temperatura ambiente; «Sconsigliato» se non adatto), riscaldare, consigli, avvertenza, nota «indicazioni dell'IA». Dopo un salvataggio (updatedAt < 90 s, niente storage) ricontrolla ogni 4 s per ~30 s. Incluso nel PDF.
+
+Test: flusso worker con Gemini simulato (normalizzazione, firma stabile su porzioni, salvataggio in background, nessuna rigenerazione se valido); PDF renderizzato. Non testato con Gemini reale (serve PIN).
 
 ---
 

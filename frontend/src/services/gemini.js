@@ -23,3 +23,11 @@ export function askAboutRecipe(recipeId, messages) {
     body: JSON.stringify({ recipeId, messages })
   })
 }
+
+/** (Re)generate "come conservarla" for a recipe and save it on the recipe. */
+export function generateStorageAdvice(recipeId) {
+  return apiFetch('/api/gemini/storage', {
+    method: 'POST',
+    body: JSON.stringify({ recipeId })
+  })
+}

@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { canViewRecipe, canEditRecipe } from '../lib/rbac.js'
 import { editorMiddleware } from '../middleware/auth.js'
 import { detectRecipeMethods } from '../lib/cookingDetect.js'
+import { generateStorageAdvice } from '../lib/storageAdvice.js'
 import {
   collectGeminiKeys,
   geminiChat,
@@ -332,6 +333,30 @@ gemini.post('/from-photo', async (c) => {
     console.error('[gemini/from-photo]', err.message)
     const status = err.status === 429 ? 429 : 500
     return c.json({ error: err.message || 'Analisi file fallita' }, status)
+  }
+})
+
+/**
+ * POST /api/gemini/storage  Body: { recipeId }
+ * Generate (or regenerate) "come conservarla" now and save it on the recipe.
+ * New/edited recipes get it automatically in the background (routes/recipes.js).
+ */
+gemini.post('/storage', async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}))
+    const recipeId = String(body.recipeId || '')
+    if (!/^[A-Za-z0-9_-]{1,80}$/.test(recipeId)) return c.json({ error: 'Ricetta non valida' }, 400)
+    const client = dbx(c)
+    const recipe = await client.getRecipe(recipeId)
+    if (!recipe) return c.json({ error: 'Ricetta non trovata' }, 404)
+
+    const storage = await generateStorageAdvice(c.env, recipe)
+    const latest = (await client.getRecipe(recipeId)) || recipe
+    await client.saveRecipe(recipeId, { ...latest, storage })
+    return c.json({ success: true, data: { storage } })
+  } catch (err) {
+    console.error('[gemini/storage]', err.message)
+    return c.json({ error: err.message || 'Consigli di conservazione non disponibili' }, err.status === 429 ? 429 : 500)
   }
 })
 

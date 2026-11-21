@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { familyMiddleware, requireEditor } from '../middleware/auth.js'
 import { coerceQuantity } from '../lib/scrapers/_base.js'
+import { refreshStorageInBackground, storageSignature } from '../lib/storageAdvice.js'
 
 const recipes = new Hono()
 // Lettura libera; creazione/modifica/eliminazione con PIN di famiglia
@@ -11,6 +12,15 @@ function dbx(c) {
 }
 
 const FAMILY_AUTHOR = 'family'
+
+/** Run after the response (storage advice must not slow down saving). */
+function afterResponse(c, promise) {
+  try {
+    c.executionCtx.waitUntil(promise)
+  } catch {
+    promise.catch(() => {})
+  }
+}
 const ID_RE = /^[A-Za-z0-9_-]{1,80}$/
 
 // Reject odd ids before they reach a Dropbox path
@@ -162,6 +172,7 @@ recipes.post('/', requireEditor, async (c) => {
   const recipe = normalizeRecipe(body, { id: crypto.randomUUID(), author: FAMILY_AUTHOR })
   await client.saveRecipe(recipe.id, recipe)
   await upsertIndex(client, recipe)
+  afterResponse(c, refreshStorageInBackground(c.env, client, recipe.id))
   return c.json({ success: true, data: toPublicRecipe(recipe) }, 201)
 })
 
@@ -186,8 +197,15 @@ recipes.put('/:id', requireEditor, async (c) => {
     }
   )
 
+  // Storage advice: keep it if what you'd store didn't change, otherwise regenerate after saving
+  const storageStillValid = Boolean(
+    existing.storage && existing.storage.sig === (await storageSignature(recipe))
+  )
+  if (storageStillValid) recipe.storage = existing.storage
+
   await client.saveRecipe(recipe.id, recipe)
   await upsertIndex(client, recipe)
+  if (!storageStillValid) afterResponse(c, refreshStorageInBackground(c.env, client, recipe.id))
   return c.json({ success: true, data: toPublicRecipe(recipe) })
 })
 
