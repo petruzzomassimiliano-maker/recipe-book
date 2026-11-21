@@ -6,18 +6,39 @@
 const UNIT_PATTERN =
   'cucchiaino|cucchiaini|cucchiaio|cucchiai|bustina|bustine|pizzico|pizzichi|confezione|confezioni|mazzetto|mazzetti|rametto|rametti|spicchio|spicchi|fetta|fette|pezzo|pezzi|bicchiere|bicchieri|tazzina|tazzine|tazza|tazze|manciata|manciate|cups|cup|gr|kg|mg|ml|cl|dl|lt|litro|litri|oz|lbs|lb|tsp|tbsp|g|l'
 
+/** Named entities seen on Italian recipe sites (WordPress, GZ, blogs). */
+const NAMED_ENTITIES = {
+  nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'",
+  agrave: 'à', aacute: 'á', acirc: 'â', auml: 'ä', Agrave: 'À', Aacute: 'Á',
+  egrave: 'è', eacute: 'é', ecirc: 'ê', euml: 'ë', Egrave: 'È', Eacute: 'É',
+  igrave: 'ì', iacute: 'í', icirc: 'î', iuml: 'ï', Igrave: 'Ì',
+  ograve: 'ò', oacute: 'ó', ocirc: 'ô', ouml: 'ö', Ograve: 'Ò', Oacute: 'Ó',
+  ugrave: 'ù', uacute: 'ú', ucirc: 'û', uuml: 'ü', Ugrave: 'Ù',
+  ccedil: 'ç', ntilde: 'ñ', szlig: 'ß',
+  rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“', laquo: '«', raquo: '»', sbquo: '‚', bdquo: '„',
+  ndash: '–', mdash: '—', hellip: '…', middot: '·', bull: '•',
+  deg: '°', frac12: '½', frac14: '¼', frac34: '¾', frac13: '⅓', frac23: '⅔',
+  times: '×', euro: '€', copy: '©', reg: '®', trade: '™', prime: '′', Prime: '″',
+  shy: '', zwnj: '', zwj: '', lrm: '', rlm: ''
+}
+
 export function decodeHtmlEntities(text) {
   if (!text) return ''
-  return String(text)
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
-    .trim()
+  let out = String(text)
+  // Twice: handles double-encoded "&amp;egrave;"
+  for (let pass = 0; pass < 2; pass++) {
+    out = out
+      .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+      .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+      .replace(/&([a-zA-Z][a-zA-Z0-9]{1,7});/g, (m, name) =>
+        Object.prototype.hasOwnProperty.call(NAMED_ENTITIES, name)
+          ? NAMED_ENTITIES[name]
+          : Object.prototype.hasOwnProperty.call(NAMED_ENTITIES, name.toLowerCase())
+            ? NAMED_ENTITIES[name.toLowerCase()]
+            : m
+      )
+  }
+  return out.replace(/\u00a0/g, ' ').trim()
 }
 
 export function stripTags(html) {
@@ -30,25 +51,109 @@ export function stripTags(html) {
   ).trim()
 }
 
+/** Elements that only hold a photo/step marker: <span class="gz-…">3</span>, <sup>3</sup>. */
+const MARKER_ELEMENT_RE =
+  /<(span|div|sup|i|em|b|strong|a)\b[^>]*?(?:class|id)=["'][^"']*(?:gz-|num|marker|badge|circle|foto|photo|bullet)[^"']*["'][^>]*>\s*\(?\s*\d{1,2}\s*\)?\s*<\/\1>/gi
+
 /**
- * Remove Giallozafferano-style orange photo markers (1)(2)(3) from step HTML/text.
+ * Step HTML → plain text. Removes only explicit marker elements (by class) and
+ * <sup>N</sup>; numbers in normal tags (<strong>20</strong> minuti) are kept.
+ * Bare photo numbers in the text ("sottili 1 , poi") are removed per recipe by
+ * stripPhotoMarkers(), which only drops them when they form the 1,2,3… sequence.
  */
 export function cleanInstructionText(htmlOrText) {
   let html = String(htmlOrText || '')
-  html = html.replace(
-    /<(span|div|sup|i|em|b|strong)[^>]{0,200}>\s*\d{1,2}\s*<\/\1>/gi,
-    ' '
-  )
-  html = html.replace(
-    /<(span|div)[^>]*(?:gz-|num|marker|badge|circle|step|foto|photo)[^>]*>[\s\S]*?<\/\1>/gi,
-    ' '
-  )
-
+  html = html.replace(MARKER_ELEMENT_RE, ' ').replace(/<sup\b[^>]*>\s*\d{1,2}\s*<\/sup>/gi, ' ')
   let text = stripTags(html)
-  text = text.replace(/\s+(\d{1,2})(?=\s*[,.;])/g, '')
-  text = text.replace(/\s+(\d{1,2})(?=\s+(?:e|ed|o|oppure|poi|quindi|infine)\b)/gi, '')
-  text = text.replace(/\s+([,.;])/g, '$1')
+  // "(foto 3)", "(2)", "(fig. 4)" photo references
+  text = text.replace(/\s*\(\s*(?:foto|fig\.?|immagine|img)?\s*\d{1,2}\s*\)/gi, '')
+  text = text.replace(/\s+([,.;:!?])/g, '$1')
   return text.replace(/\s{2,}/g, ' ').trim()
+}
+
+// A bare 1–2 digit number that is not part of a decimal/range and not followed by a unit or noun-like quantity
+const MARKER_CANDIDATE_RE =
+  /(?<=^|[^\d.,\/\-–]|(?:^|\s)\d{1,2})\s(\d{1,2})(?![\d])(?![.,]\d)(?=\s*(?:[,.;:!?)]|$)|\s+\d{1,2}(?!\d|[.,]\d)|\s+(?!(?:[-–x×]|e\s+mezz|minut|min\b|or[ae]\b|second|°|grad|cm\b|mm\b|g\b|gr\b|kg\b|ml\b|cl\b|dl\b|l\b|litr|cucchia|tazz|bicchier|pezz|fett|uov|tuorl|album|spicch|volt|giorn|mes[ei]\b|settiman|porzion|part[ei]\b|strat|dit[ao]\b|fogli|rametti|bustin|pizzic|cubett|dischi|pallin|polpett|burger|biscott|panin|person|anni|cm\.))[a-zà-ÿ])/gi
+
+/**
+ * GialloZafferano-style photo markers are bare numbers that count 1,2,3… through
+ * the whole method ("sottili 1 , poi dividetele 2 e…"). Remove a candidate only
+ * when it continues that sequence, so real quantities ("in 4.", "5 o 6 minuti")
+ * stay. Requires ≥3 markers in sequence, otherwise nothing is touched.
+ */
+export function stripPhotoMarkers(texts) {
+  const list = (texts || []).map((t) => String(t || ''))
+  const hits = []
+  list.forEach((text, ti) => {
+    for (const m of text.matchAll(MARKER_CANDIDATE_RE)) {
+      hits.push({ ti, n: Number(m[1]), start: m.index, end: m.index + m[0].length })
+    }
+  })
+  let expected = 1
+  const chosen = []
+  for (const h of hits) {
+    if (h.n >= expected && h.n <= expected + 2) {
+      chosen.push(h)
+      expected = h.n + 1
+    }
+  }
+  if (chosen.length < 3) return list
+  const byText = new Map()
+  for (const h of chosen) {
+    if (!byText.has(h.ti)) byText.set(h.ti, [])
+    byText.get(h.ti).push(h)
+  }
+  return list.map((text, ti) => {
+    const cuts = byText.get(ti)
+    if (!cuts) return text
+    let out = text
+    for (const h of [...cuts].sort((a, b) => b.start - a.start)) {
+      out = `${out.slice(0, h.start)}${out.slice(h.end).replace(/^\s*/, ' ')}`
+    }
+    return out.replace(/\s+([,.;:!?])/g, '$1').replace(/\s{2,}/g, ' ').trim()
+  })
+}
+
+/** Promotional / navigation text that is not part of a recipe. */
+export const PROMO_SENTENCE_RE =
+  /(scopri\s+(la ricetta|le ricette|come (fare|preparar)|anche|dosi|tutt)|clicca|iscriviti|seguimi|seguici|segui le mie|leggi (anche|tutte)|guarda (pure|anche)|non perdere|se (questa ricetta )?ti [eè] piaciut|newsletter|facebook|instagram|telegram|tiktok|youtube|pinterest)/i
+
+/** A whole "step" that is only promo/social/navigation ("Seguimi su Instagram", "LEGGI ANCHE: …"). */
+export function isPromoStep(text) {
+  const t = String(text || '').trim()
+  if (!t) return true
+  if (!/[a-zà-ÿ]{2}/i.test(t)) return true // "-: • - • -"
+  if (/^(se (questa ricetta )?ti [eè] piaciut|segui (le mie|i miei|anche|su)|seguimi|seguici|iscriviti|leggi (anche|tutte|altre)|scopri (la ricetta|le ricette|anche|altre)|guarda (pure|anche)|non perdere|clicca|visita (il|la|anche)|altre ricette|potrebbe interessarti|ti potrebbe)/i.test(t)) return true
+  return /(facebook|instagram|telegram|tiktok|youtube|pinterest|newsletter)/i.test(t) && t.length < 400
+}
+
+/**
+ * Description → notes without promo: drops the "…: scopri dosi e ricetta!" tail
+ * of a sentence, and short sentences that are only promo ("Scopri la ricetta").
+ */
+export function stripPromoSentences(text) {
+  const raw = String(text || '').trim()
+  if (!raw) return ''
+  // Paragraph by paragraph, so "…\n\nResa: 850 g" keeps its layout
+  return raw
+    .split(/(\n+)/)
+    .map((part) => {
+      if (/^\n+$/.test(part)) return part
+      const withoutTails = part.replace(
+        /\s*[:,;–—-]\s*(scopri (la ricetta|le ricette|come|dosi|tutt|anche)|clicca|leggi (anche|tutte)|guarda (pure|anche))\b[^.!?\n]*[.!?]*/gi,
+        '.'
+      )
+      return withoutTails
+        .split(/(?<=[.!?…])[ \t]+/)
+        .filter((s) => !(PROMO_SENTENCE_RE.test(s) && s.length < 160))
+        .join(' ')
+        .replace(/(?<!\.)\.\.(?!\.)/g, '.')
+        .replace(/([!?])\./g, '$1')
+        .trim()
+    })
+    .join('')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 }
 
 export function parseDurationMinutes(value) {
@@ -133,6 +238,12 @@ export function resolveRecipeYield(value, html = '') {
     if (mass && !yieldLabel) {
       yieldLabel = formatYieldLabel(mass[1], mass[2])
     }
+
+    // "15 pezzi", "10 msemen", "24 biscotti": a count of items, not of people
+    const pieces = !people && !mass && text.match(/(\d+)\s+([a-zà-ÿ][a-zà-ÿ' ]{2,30})$/i)
+    if (pieces && !yieldLabel) {
+      yieldLabel = `${pieces[1]} ${pieces[2].trim()}`
+    }
   }
 
   // Bare numeric recipeYield (common on Giallozafferano)
@@ -144,7 +255,7 @@ export function resolveRecipeYield(value, html = '') {
         : null
 
   if (bare != null && Number.isFinite(bare) && bare > 0) {
-    if (yieldLabel) {
+    if (yieldLabel && YIELD_MASS_VOLUME_RE.test(yieldLabel)) {
       // Number is the mass/volume amount, not portions
     } else if (bare <= MAX_PLAUSIBLE_SERVINGS) {
       servings = servings ?? Math.round(bare)
@@ -348,6 +459,8 @@ export function parseIngredientLine(line) {
     .replace(/\b(farina\b[^,()]*?)\s+['’‘](0{1,2})(?!\d)/gi, '$1 $2')
     // WP Recipe Maker notes: "(, finely chopped)"
     .replace(/\(\s*,\s*/g, '(')
+    // "1 ½" / "1½" → "1.5" (mixed number with a unicode fraction)
+    .replace(/(\d+)\s*([½¼¾⅓⅔])/g, (_, a, f) => String(Math.round((Number(a) + UNICODE_FRACTIONS[f]) * 100) / 100))
   if (!raw) return null
 
   const unit = UNIT_PATTERN
@@ -381,12 +494,21 @@ export function parseIngredientLine(line) {
   return parsed
 }
 
+const UNICODE_FRACTIONS = { '½': 0.5, '¼': 0.25, '¾': 0.75, '⅓': 0.33, '⅔': 0.67 }
+
 function parseIngredientCore(raw, unit, qty) {
 
   // "Sale q.b." / "Olio extravergine q.b."
   let m = raw.match(/^(.+?)\s+q\.?\s*b\.?$/iu)
   if (m) {
     return withOptionalNotes({ name: m[1].trim(), quantity: 'q.b.', unit: '', notes: '' })
+  }
+
+  // "Pangrattato q.b. per impanare" → q.b. + note
+  m = raw.match(/^(.+?)\s+q\.?\s*b\.?\s+(.+)$/iu)
+  if (m && !/\d/.test(m[1])) {
+    const base = withOptionalNotes({ name: m[1].trim(), quantity: 'q.b.', unit: '', notes: '' })
+    return { ...base, notes: joinNotes(base.notes, m[2].replace(/^[,;:\-–]\s*/, '').replace(/^\((.*)\)$/, '$1')) }
   }
 
   // "q.b. di sale"

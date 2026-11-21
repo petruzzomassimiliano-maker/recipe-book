@@ -1,5 +1,5 @@
 import { geminiGenerateContent, parseGeminiJson } from '../geminiClient.js'
-import { emptyDraft, refineIngredientFields, stripTags } from './_base.js'
+import { emptyDraft, isPromoStep, refineIngredientFields, stripPromoSentences, stripTags } from './_base.js'
 import { STEPS_READABILITY_RULES, improveStepsReadability } from './readableSteps.js'
 import { withSection } from './sections.js'
 
@@ -32,7 +32,10 @@ Sezioni (componenti): se la ricetta originale divide ingredienti e/o procediment
 /**
  * Pull a compact, recipe-relevant text blob from HTML for Gemini.
  */
-export function extractReadableRecipeText(html, { maxChars = 14000 } = {}) {
+const RECIPE_HINT_RE = /ingredient|preparazione|procedimento|dosi per|method|instructions/gi
+const HAS_RECIPE_HINT = /ingredient|preparazione|procedimento|dosi per|method|instructions/i
+
+export function extractReadableRecipeText(html, { maxChars = 30000 } = {}) {
   let text = String(html || '')
   text = text
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
@@ -40,16 +43,25 @@ export function extractReadableRecipeText(html, { maxChars = 14000 } = {}) {
     .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
     .replace(/<svg[\s\S]*?<\/svg>/gi, ' ')
     .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<(nav|footer|aside|form)\b[\s\S]*?<\/\1>/gi, ' ')
 
-  // Prefer main / article if present
-  const main = text.match(/<(?:main|article)[^>]*>([\s\S]*?)<\/(?:main|article)>/i)
-  if (main?.[1] && main[1].length > 400) text = main[1]
+  // Pick the <main>/<article> block that actually talks about the recipe
+  // (pages often have "related recipes" <article> cards before it).
+  const blocks = [
+    ...text.matchAll(/<main\b[^>]*>([\s\S]*)<\/main>/gi),
+    ...text.matchAll(/<article\b[^>]*>([\s\S]*?)<\/article>/gi)
+  ].map((m) => stripTags(m[1]).replace(/\s+/g, ' ').trim())
+  const score = (t) => (t.match(RECIPE_HINT_RE) || []).length * 1000 + Math.min(t.length, 20000) / 100
+  const best = blocks.filter((t) => t.length > 400 && HAS_RECIPE_HINT.test(t)).sort((a, b) => score(b) - score(a))[0]
 
-  text = stripTags(text)
-    .replace(/\s+/g, ' ')
-    .trim()
+  text = best || stripTags(text).replace(/\s+/g, ' ').trim()
 
-  if (text.length > maxChars) text = text.slice(0, maxChars)
+  if (text.length > maxChars) {
+    // Long blog intro: keep the part from just before "Ingredienti"
+    const at = text.search(/ingredienti|ingredients/i)
+    const start = at > maxChars / 3 ? at - 1500 : 0
+    text = text.slice(start, start + maxChars)
+  }
   return text
 }
 
@@ -67,7 +79,7 @@ export function normalizeAiDraft(parsed, sourceUrl, sourceProvider = 'gemini') {
   const diff = String(parsed.difficulty || 'easy').toLowerCase()
   draft.difficulty = ['easy', 'medium', 'hard'].includes(diff) ? diff : 'easy'
   draft.cuisine = String(parsed.cuisine || '').trim()
-  draft.notes = String(parsed.notes || '').trim()
+  draft.notes = stripPromoSentences(String(parsed.notes || '').trim())
   draft.imageUrl = parsed.imageUrl || null
   draft.tags = []
 
@@ -94,7 +106,7 @@ export function normalizeAiDraft(parsed, sourceUrl, sourceProvider = 'gemini') {
       .map((s) =>
         withSection({ instruction: String(s?.instruction || s?.text || '').trim() }, s?.section)
       )
-      .filter((s) => s.instruction)
+      .filter((s) => s.instruction && !isPromoStep(s.instruction))
   )
 
   return draft
@@ -123,7 +135,8 @@ Regole:
 - quantity: numero, frazione decimale, oppure la stringa "q.b." quando è quanto basta; null se sconosciuta
 - unit: g, ml, cucchiaio, cucchiaino, ecc. (vuoto se q.b.)
 - name: solo il nome dell'ingrediente, SENZA dose
-- Ignora pubblicità, commenti, newsletter
+- Copia ESATTAMENTE dosi, tempi, temperature e misure della pagina (non arrotondare, non indovinare numeri incompleti)
+- Ignora pubblicità, commenti, newsletter, link ad altre ricette
 ${STEPS_READABILITY_RULES}
 ${weakHint}
 URL: ${sourceUrl}
@@ -221,6 +234,12 @@ export async function polishStepsWithGemini(apiKey, steps) {
   const prompt = `Riscrivi SOLO i passi di preparazione di una ricetta per renderli più leggibili in cucina.
 Restituisci SOLO JSON: { "steps": [{ "instruction": "string" }] }
 
+REGOLE DI FEDELTÀ (obbligatorie):
+- Non cambiare, arrotondare né togliere NESSUN numero: dosi, pesi, tempi, temperature, misure, quantità di pezzi
+- Non togliere informazioni pratiche (es. "devono pesare circa 520 g", "finché non diventa dorato")
+- Non aggiungere ingredienti, tempi o temperature che non ci sono
+- Cambia solo la forma (frasi più brevi, elenchi), mai il contenuto
+
 ${STEPS_READABILITY_RULES}
 
 Passi originali:
@@ -230,11 +249,27 @@ ${JSON.stringify(input)}`
   const parsed = parseGeminiJson(text)
   const next = Array.isArray(parsed.steps) ? parsed.steps : parsed
   if (!Array.isArray(next) || !next.length) return improveStepsReadability(steps)
-  return improveStepsReadability(
-    next.map((s) => ({
-      instruction: String(s?.instruction || s || '').trim()
-    })).filter((s) => s.instruction)
-  )
+  const rewritten = next
+    .map((s) => ({ instruction: String(s?.instruction || s || '').trim() }))
+    .filter((s) => s.instruction)
+
+  // Safety net: every number of the original must survive the rewrite
+  const missing = missingNumbers(input.join('\n'), rewritten.map((s) => s.instruction).join('\n'))
+  if (missing.length) {
+    console.warn('[scraper] Gemini step rewrite dropped numbers', missing, '— keeping the original steps')
+    return improveStepsReadability(steps)
+  }
+  return improveStepsReadability(rewritten)
+}
+
+/** Distinct numbers (1,5 / 1.5 / 180) of `before` that do not appear in `after`. */
+export function missingNumbers(before, after) {
+  const nums = (t) =>
+    new Set(
+      [...String(t).matchAll(/\d+(?:[.,]\d+)?/g)].map((m) => m[0].replace('.', ',').replace(/^0+(?=\d)/, ''))
+    )
+  const out = nums(after)
+  return [...nums(before)].filter((n) => !out.has(n))
 }
 
 /**

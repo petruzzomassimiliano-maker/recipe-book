@@ -5,6 +5,7 @@ import {
   inferMissingGrams,
   parseDurationMinutes,
   resolveRecipeYield,
+  stripPromoSentences,
   stripTags
 } from './_base.js'
 import { applyHtmlIngredientSections, ingredientsFromJsonLd, stepsFromJsonLd } from './sections.js'
@@ -67,7 +68,7 @@ export function parseJsonLdRecipe(html, sourceUrl) {
   draft.cuisine = stripTags(asArray(recipe.recipeCuisine)[0] || '')
   draft.tags = [] // user sets tags manually in the form
   draft.imageUrl = firstImage(recipe.image)
-  draft.notes = stripTags(recipe.description || '')
+  draft.notes = stripPromoSentences(stripTags(recipe.description || ''))
   if (yieldLabel) {
     const resa = `Resa: ${yieldLabel}`
     if (!/resa\s*:/i.test(draft.notes) && !draft.notes.includes(yieldLabel)) {

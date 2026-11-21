@@ -4,7 +4,14 @@
  * Recipes without sections keep the exact old shape (no `section` key).
  */
 
-import { asArray, cleanInstructionText, parseIngredientLine, stripTags } from './_base.js'
+import {
+  asArray,
+  isPromoStep,
+  cleanInstructionText,
+  parseIngredientLine,
+  stripPhotoMarkers,
+  stripTags
+} from './_base.js'
 
 const SECTION_MAX_LENGTH = 80
 const HEADER_MAX_LENGTH = 60
@@ -274,6 +281,22 @@ function stepsFromSectionedText(text) {
  * and comma-fragmented arrays.
  */
 export function stepsFromJsonLd(instructions) {
+  return finalizeSteps(rawStepsFromJsonLd(instructions))
+}
+
+/**
+ * Whole-method post-processing: photo markers (only when they form the 1,2,3…
+ * sequence across steps) and promo lines ("Se questa ricetta ti è piaciuta…").
+ */
+export function finalizeSteps(steps) {
+  const list = (steps || []).filter((s) => s?.instruction)
+  const cleaned = stripPhotoMarkers(list.map((s) => s.instruction))
+  return list
+    .map((s, i) => ({ ...s, instruction: cleaned[i] }))
+    .filter((s) => s.instruction && !isPromoStep(s.instruction))
+}
+
+function rawStepsFromJsonLd(instructions) {
   if (!instructions) return []
 
   if (typeof instructions === 'string') {

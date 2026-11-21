@@ -1,4 +1,5 @@
 import { emptyDraft, parseIngredientLine, cleanInstructionText, stripTags } from './_base.js'
+import { finalizeSteps } from './sections.js'
 
 function matchAll(html, regex) {
   const out = []
@@ -26,10 +27,15 @@ export function parseHeuristicRecipe(html, sourceUrl, hostHint = '') {
     /content=["']([^"']+)["'][^>]*property=["']og:title["']/i
   ])
 
-  const ingredientMatches = matchAll(
+  // Whole <li> first: plugins (WP Recipe Maker, Tasty…) split amount/unit/name into
+  // inner <span class="…ingredient-…">, which must not become separate ingredients.
+  let ingredientMatches = matchAll(
     html,
-    /<(?:li|span)[^>]*(?:ingredient|mntl-structured-ingredients__list-item)[^>]*>([\s\S]*?)<\/(?:li|span)>/gi
+    /<li\b[^>]*(?:ingredient|mntl-structured-ingredients__list-item)[^>]*>([\s\S]*?)<\/li>/gi
   )
+  if (!ingredientMatches.length) {
+    ingredientMatches = matchAll(html, /<span\b[^>]*class=["'][^"']*ingredient(?![-_](?:amount|unit|name|notes))[^"']*["'][^>]*>([\s\S]*?)<\/span>/gi)
+  }
   draft.ingredients = ingredientMatches
     .map((m) => parseIngredientLine(m[1]))
     .filter(Boolean)
@@ -39,10 +45,12 @@ export function parseHeuristicRecipe(html, sourceUrl, hostHint = '') {
     html,
     /<(?:li|p|div)[^>]*(?:instruction|preparation|mntl-sc-block-group--LI|recipe__steps)[^>]*>([\s\S]*?)<\/(?:li|p|div)>/gi
   )
-  draft.steps = stepMatches
-    .map((m) => ({ instruction: cleanInstructionText(m[1]) }))
-    .filter((s) => s.instruction.length > 8)
-    .slice(0, 40)
+  draft.steps = finalizeSteps(
+    stepMatches
+      .map((m) => ({ instruction: cleanInstructionText(m[1]) }))
+      .filter((s) => s.instruction.length > 8)
+      .slice(0, 40)
+  )
 
   // Giallozafferano-ish
   if (!draft.ingredients.length && /giallozafferano/i.test(hostHint + sourceUrl)) {

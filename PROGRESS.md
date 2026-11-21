@@ -41,6 +41,31 @@
 
 ---
 
+## Sessione 21 — 2026-11-22 — Audit ed estrazione testo (import da sito)
+
+### Metodo
+Replay del parser sulle 37 pagine sorgente delle ricette importate + confronto numeri (fonte → parser → ricetta salvata) + casi sintetici. Ingredienti già solidi (268/269 righe ok).
+
+### Bug corretti
+| Bug | Fix |
+|-----|-----|
+| Decimali distrutti: «1,5 cm» → «,5 cm» → Gemini «0,5 cm» (Zuppa di lenticchie) | `cleanInstructionText` fa solo pulizia HTML; i marcatori foto sono tolti da `stripPhotoMarkers` |
+| Regola marcatori foto cancellava numeri veri («5 o 6 minuti», «in 4.», «2 e mescola») e ne lasciava altri («zucca 8 in modo») | `stripPhotoMarkers(steps)`: rimuove numeri isolati solo se formano la sequenza 1,2,3… sull'intero procedimento (≥3), anche consecutivi («10 11 ,»); «(foto 3)»/«(2)» rimossi |
+| `<strong>20</strong> minuti` → «minuti»; contenitori con «step» nella classe svuotati | Rimossi solo elementi-marcatore per classe (`gz-`, `num`, `marker`, `badge`, `circle`, `foto`…) e `<sup>N</sup>` |
+| Entità HTML con nome non decodificate (`&frac12;`, `&egrave;`, `&rsquo;`, `&deg;`…) | Tabella entità + doppia decodifica |
+| «1 ½ cucchiaio» → qty 1 + «½…» nel nome; «Pangrattato q.b. per impanare» non riconosciuto | Frazioni unicode miste → decimale; q.b. a metà riga → q.b. + nota |
+| Riscrittura passi Gemini senza vincolo sui numeri (persi «520 g» Parigina) | Prompt «regole di fedeltà» + `missingNumbers()`: se manca un numero dell'originale si scarta la riscrittura |
+| Estrazione parziale: draft Gemini riscritto 2 volte ed etichettato «html» | `draftMethod` traccia l'estrattore reale |
+| Euristica (siti senza JSON-LD): WP Recipe Maker spezzato in «300», «g», «farina»; il controllo qualità lo accettava | `<li>` intero prima degli `<span>`; qualità: ≥2 frammenti → non accettabile → Gemini |
+| Testo per Gemini: primo `<article>` (spesso «ricette correlate»), taglio a 14k | Blocco con più indizi di ricetta, nav/footer/aside tolti, 30k caratteri centrati su «Ingredienti» |
+| «Dosi per: 15 pezzi» → 15 porzioni senza spiegazione | Nota «Resa: 15 pezzi» |
+| Note con «Scopri la ricetta…», passi «Seguimi su Instagram / LEGGI ANCHE» | `stripPromoSentences` (per paragrafo, solo code/frasi promo) + `isPromoStep` (non tocca «Scoprite la pentola», «Seguite il procedimento») |
+
+Verifica: 29 test mirati ok; replay su 37 pagine reali: porzioni invariate, numeri con unità persi 2 → 0, solo differenze attese (marcatori, decimali, promo).
+Dati già salvati: 12 ricette con correzioni (Zuppa 1,5 cm, marcatori Hummus di zucca/Pasta alla Norma, Pesto 260→4 porzioni, ½ Hummus di funghi, note promo, «Resa: N pezzi», passo promo Peperoni) — applicate con script e PIN.
+
+---
+
 ## Sessione 20 — 2026-11-21 — «Come conservarla» (frigo, congelatore, ambiente)
 
 ### Segnalazione

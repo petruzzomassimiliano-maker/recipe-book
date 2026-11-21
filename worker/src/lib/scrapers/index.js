@@ -199,6 +199,7 @@ export async function fetchRecipeFromUrl(url, { geminiEnv, geminiApiKey } = {}) 
     parseHeuristicRecipe(html, sourceUrl, parsedUrl.hostname)
 
   let quality = evaluateDraftQuality(draft)
+  let draftMethod = 'html' // which extractor produced the current `draft`
   attempts.push({ method: 'html', ok: quality.ok, score: quality.score, reasons: quality.reasons })
 
   const finish = async (method, extras = {}) => {
@@ -236,6 +237,7 @@ export async function fetchRecipeFromUrl(url, { geminiEnv, geminiApiKey } = {}) 
       if (aiQuality.ok || aiQuality.score > quality.score) {
         draft = aiDraft
         quality = aiQuality
+        draftMethod = 'gemini-text'
       }
 
       if (isDraftAcceptable(draft)) {
@@ -269,6 +271,7 @@ export async function fetchRecipeFromUrl(url, { geminiEnv, geminiApiKey } = {}) 
         if (visionQuality.ok || visionQuality.score > quality.score) {
           draft = visionDraft
           quality = visionQuality
+          draftMethod = 'gemini-vision'
         }
 
         if (isDraftAcceptable(draft)) {
@@ -285,10 +288,8 @@ export async function fetchRecipeFromUrl(url, { geminiEnv, geminiApiKey } = {}) 
 
   // Best effort: return best draft we have, or fail
   if (draft && (draft.title || draft.ingredients?.length || draft.steps?.length)) {
-    const method =
-      attempts.filter((a) => a.ok !== false && a.score != null).sort((a, b) => b.score - a.score)[0]
-        ?.method || 'html'
-    return finish(method, {
+    // Label = extractor that produced this draft; only HTML drafts get the Gemini step rewrite
+    return finish(draftMethod, {
       extractAttempts: attempts,
       extractWarning:
         'Estrazione parziale: controlla ingredienti e passaggi prima di salvare.'

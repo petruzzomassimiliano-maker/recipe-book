@@ -18,6 +18,15 @@ function ingredientLooksUnparsed(ing) {
   return false
 }
 
+/** Pieces of a split line: "300", "g", "½" became separate ingredients. */
+function ingredientLooksFragment(ing) {
+  const name = String(ing?.name || '').trim()
+  return (
+    /^[\d\s.,/½¼¾⅓⅔-]+$/.test(name) ||
+    /^(g|gr|kg|mg|ml|cl|dl|l|lt|q\.?\s*b\.?|cucchiai[noi]?|cucchiaini?|tazz[ae]|cups?|tbsp|tsp|oz|lb)$/i.test(name)
+  )
+}
+
 /**
  * @returns {{ ok: boolean, score: number, reasons: string[] }}
  */
@@ -45,6 +54,12 @@ export function evaluateDraftQuality(draft) {
   if (ingredients.length > 0 && withQty / ingredients.length >= 0.4) score += 2
   else if (ingredients.length >= 2) reasons.push('poche quantità sugli ingredienti')
 
+  const fragments = ingredients.filter(ingredientLooksFragment)
+  if (fragments.length >= 2) {
+    score -= 4
+    reasons.push(`${fragments.length} ingredienti spezzati (es. "300", "g")`)
+  }
+
   const unparsed = ingredients.filter(ingredientLooksUnparsed)
   if (unparsed.length >= 2) {
     score -= 4
@@ -56,7 +71,8 @@ export function evaluateDraftQuality(draft) {
   else if (steps.length === 1) score += 1
   else reasons.push('passaggi assenti o troppo corti')
 
-  const ok = score >= 6 && ingredients.length >= 2 && steps.length >= 1 && unparsed.length < 2
+  const ok =
+    score >= 6 && ingredients.length >= 2 && steps.length >= 1 && unparsed.length < 2 && fragments.length < 2
   return { ok, score, reasons }
 }
 
