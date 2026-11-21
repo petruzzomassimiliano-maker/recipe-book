@@ -49,7 +49,7 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: '/index.html',
-        globPatterns: ['**/*.{js,css,html,ico,svg,woff2,png,webp}'],
+        globPatterns: ['**/*.{js,css,html,ico,svg,woff2,ttf,png,webp}'],
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.pathname.startsWith('/api/'),

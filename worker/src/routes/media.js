@@ -31,6 +31,50 @@ function randomId() {
 }
 
 /**
+ * GET /api/media/proxy?url=… — serve an external recipe photo with CORS so the
+ * browser can embed it in the PDF. Only URLs already used as a recipe image are
+ * allowed (not an open proxy). Must be registered before /:file.
+ */
+const MAX_PROXY_BYTES = 10 * 1024 * 1024
+
+media.get('/proxy', async (c) => {
+  const url = String(c.req.query('url') || '')
+  if (!/^https?:\/\//i.test(url) || url.length > 2000) {
+    return c.json({ error: 'URL non valido' }, 400)
+  }
+  try {
+    const dbx = await getFamilyDropboxClient(c.env)
+    const index = await dbx.getRecipesIndex()
+    if (!index.some((e) => e?.imageUrl === url)) {
+      return c.json({ error: 'Immagine non associata a nessuna ricetta' }, 403)
+    }
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; RecipeBook/1.0)',
+        Accept: 'image/avif,image/webp,image/jpeg,image/png,image/*;q=0.8'
+      },
+      cf: { cacheTtl: 86400, cacheEverything: true }
+    })
+    const type = res.headers.get('content-type') || ''
+    const size = Number(res.headers.get('content-length') || 0)
+    if (!res.ok || !type.startsWith('image/') || size > MAX_PROXY_BYTES) {
+      return c.json({ error: 'Immagine non disponibile' }, 502)
+    }
+    return new Response(res.body, {
+      status: 200,
+      headers: {
+        'Content-Type': type,
+        'Cache-Control': 'public, max-age=86400',
+        'Access-Control-Allow-Origin': '*'
+      }
+    })
+  } catch (err) {
+    console.error('[media/proxy]', err.message)
+    return c.json({ error: 'Immagine non disponibile' }, 502)
+  }
+})
+
+/**
  * GET /api/media/:file — public serve (UUID filenames).
  * Allows <img src> without Authorization header.
  */

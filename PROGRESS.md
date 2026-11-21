@@ -34,7 +34,7 @@
 | **Invite link monouso** | «Sessione 8» + «10» | 🗑️ Rimosso in «Sessione 19» |
 | **Deploy prod** | «Sessione 10» + «12»–«17» | ✅ Cloudflare + repo GitHub |
 | **Accesso senza account + PIN** | «Sessione 19» | ✅ Lettura libera; modifiche/import/IA con `EDIT_PIN` |
-| **Export PDF ricetta** | «Sessione 19» | ✅ jsPDF lazy; condivisione nativa su smartphone, download su desktop |
+| **Export PDF ricetta** | «Sessione 19» + «20» | ✅ Design moderno (font del sito, foto, 2 colonne, schede conservazione); foto esterne via proxy |
 | **Import da PDF** | «Sessione 19» | ✅ Gemini legge il PDF (max 10 MB) |
 | **Come conservarla** | «Sessione 20» | ✅ Gemini in background al salvataggio; sezione in scheda + PDF |
 | **Snippet riusabili** | «Biblioteca codice critico» (fine file) | ✅ Pattern da copiare in altri progetti |
@@ -51,6 +51,10 @@ Quando si salva una ricetta, Gemini deve dire come conservarla e per quanto (fri
 - `POST /api/recipes` e `PUT` (se `sig` cambia): generazione **in background** con `executionCtx.waitUntil` → il salvataggio non rallenta; prima di scrivere rilegge la ricetta e salva solo se il contenuto non è cambiato nel frattempo. Il `PUT` conserva `storage` se la firma è uguale (porzioni/tag/foto non la cambiano).
 - `POST /api/gemini/storage {recipeId}` (PIN): genera subito (ricette vecchie / «Rigenera»).
 - Frontend `StorageSection.jsx`: tra Preparazione e «Come cuocerla», chip «Conservazione» nel menu della scheda; 3 schede (Frigorifero, Congelatore, Temperatura ambiente; «Sconsigliato» se non adatto), riscaldare, consigli, avvertenza, nota «indicazioni dell'IA». Dopo un salvataggio (updatedAt < 90 s, niente storage) ricontrolla ogni 4 s per ~30 s. Incluso nel PDF.
+
+### PDF ridisegnato (stessa sessione)
+- Foto mancante nel PDF per **40 ricette su 48**: immagini su siti esterni senza CORS. Nuovo `GET /api/media/proxy?url=` sul Worker: serve solo URL già usati come `imageUrl` di una ricetta (non è un proxy aperto), solo `image/*`, max 10 MB, cache 1 giorno.
+- Nuovo layout: foto a tutta larghezza ritagliata (cover) o banda colorata se manca, font del sito incorporati (Fraunces SemiBold + Outfit Regular/Medium/SemiBold in `frontend/public/fonts`, licenza OFL inclusa, precache PWA), chip per porzioni/tempi/difficoltà, ingredienti in riquadro a 2 colonne con quantità allineate e sezioni, passi con numeri in cerchio, avvertenza + 3 schede di conservazione, «Come cuocerla» con il metodo della ricetta in testa (stessa regola dell'app), fonte cliccabile, piè di pagina con numero pagina. Fallback Helvetica se i font non si caricano.
 
 Test: flusso worker con Gemini simulato (normalizzazione, firma stabile su porzioni, salvataggio in background, nessuna rigenerazione se valido); PDF renderizzato. Non testato con Gemini reale (serve PIN).
 
