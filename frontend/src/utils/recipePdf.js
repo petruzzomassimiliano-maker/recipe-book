@@ -312,8 +312,9 @@ export async function buildRecipePdf(
     const colW = twoCols ? (CW - pad * 2 - gap) / 2 : CW - pad * 2
     const itemLh = lineH(10, 1.35)
     const rows = []
-    for (const group of groupBySection(ingredients)) {
-      if (group.section) rows.push({ type: 'section', text: group.section, h: 7 })
+    groupBySection(ingredients).forEach((group, gi) => {
+      const label = group.section || (gi > 0 ? 'Altri ingredienti' : '')
+      if (label) rows.push({ type: 'section', text: label, h: 7 })
       for (const { item } of group.entries) {
         const qty = pdfSafe(formatScaledQty(item.quantity, item.unit) || '')
         font('semibold', 10, C.ink)
@@ -322,7 +323,7 @@ export async function buildRecipePdf(
         const lines = wrap(`${item.name}${item.notes ? ` (${item.notes})` : ''}`, colW - 3.5 - qtyW)
         rows.push({ type: 'item', lines, qty, h: lines.length * itemLh + 2.6 })
       }
-    }
+    })
 
     // Split rows in two balanced columns, never leaving a section title alone at the bottom
     let left = rows
@@ -395,11 +396,12 @@ export async function buildRecipePdf(
   const steps = groupStepsForDisplay(recipe.steps || [])
   if (steps.length) {
     sectionTitle('Preparazione')
-    for (const group of groupBySection(steps)) {
-      if (group.section) {
+    groupBySection(steps).forEach((group, gi) => {
+      const label = group.section || (gi > 0 ? 'Altri passi' : '')
+      if (label) {
         ensure(12)
         y += 1
-        eyebrow(group.section, M, y + 4, C.accentDark)
+        eyebrow(label, M, y + 4, C.accentDark)
         y += 7
       }
       for (const { item } of group.entries) {
@@ -420,7 +422,7 @@ export async function buildRecipePdf(
         }
         y = Math.max(y, top + 7) + 3.2
       }
-    }
+    })
   }
 
   // ── Storage cards ─────────────────────────────────────────────────────────

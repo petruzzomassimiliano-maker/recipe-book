@@ -10,7 +10,15 @@ function toIndexShape(recipe) {
     tags: recipe.metadata?.tags || recipe.tags || [],
     servings: recipe.metadata?.servings ?? recipe.servings,
     difficulty: recipe.metadata?.difficulty ?? recipe.difficulty,
+    totalTime:
+      recipe.totalTime ??
+      (Number(recipe.metadata?.prepTime) || 0) + (Number(recipe.metadata?.cookTime) || 0),
     imageUrl: recipe.imageUrl || null,
+    sourceUrl: recipe.sourceUrl || null,
+    ingredientNames:
+      recipe.ingredientNames ||
+      (recipe.ingredients || []).map((i) => String(i?.name || '').trim()).filter(Boolean),
+    lastCookedAt: recipe.lastCookedAt ?? recipe.diary?.[0]?.date ?? null,
     createdAt: recipe.createdAt || null,
     updatedAt: recipe.updatedAt
   }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore.js'
 import { useRecipes } from '../hooks/useRecipes.js'
+import { useFavoritesStore } from '../store/favoritesStore.js'
 
 const difficultyLabel = {
   easy: 'Facile',
@@ -43,6 +44,11 @@ export default function Home() {
   const navigate = useNavigate()
   const { recipes, loadRecipes, isLoading } = useRecipes()
   const [randomId, setRandomId] = useState(null)
+  const favoriteIds = useFavoritesStore((s) => s.ids)
+  const favorites = useMemo(() => {
+    const byId = new Map((recipes || []).map((r) => [r.id, r]))
+    return favoriteIds.map((id) => byId.get(id)).filter(Boolean)
+  }, [recipes, favoriteIds])
 
   useEffect(() => {
     // Home always works on the full list, not on the last search in /recipes
@@ -79,6 +85,12 @@ export default function Home() {
       desc: 'Scrivi',
       to: '/recipes/new',
       accent: 'bg-orange-50 text-orange-900 border-orange-100'
+    },
+    {
+      label: 'Cosa cucino?',
+      desc: 'Con quello che ho',
+      to: '/cosa-cucino',
+      accent: 'bg-amber-50 text-amber-900 border-amber-100'
     },
     {
       label: 'Tutte le ricette',
@@ -176,9 +188,40 @@ export default function Home() {
         )}
       </section>
 
+      {favorites.length > 0 && (
+        <section className="mb-7 sm:mb-10">
+          <div className="flex items-end justify-between mb-3 gap-3">
+            <h2 className="section-title !text-lg sm:!text-xl">
+              <span className="text-amber-500" aria-hidden>★</span> Preferite
+            </h2>
+            <Link to="/recipes?preferite=1" className="inline-flex items-center min-h-[44px] text-sm text-primary font-semibold">
+              Vedi tutte
+            </Link>
+          </div>
+          <ul className="flex gap-3 overflow-x-auto scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0 pb-1">
+            {favorites.slice(0, 12).map((r) => (
+              <li key={r.id} className="shrink-0 w-36 sm:w-44">
+                <Link to={`/recipes/${r.id}`} className="block rounded-2xl border border-stone-200/80 bg-white overflow-hidden active:bg-stone-50">
+                  {r.imageUrl ? (
+                    <img src={r.imageUrl} alt="" loading="lazy" className="w-full aspect-[4/3] object-cover bg-stone-100" />
+                  ) : (
+                    <div className="w-full aspect-[4/3] bg-gradient-to-br from-orange-50 via-stone-50 to-teal-50 flex items-center justify-center">
+                      <span className="font-display text-2xl text-stone-300">{r.title?.[0] || 'R'}</span>
+                    </div>
+                  )}
+                  <p className="px-2.5 py-2 text-sm font-semibold text-stone-800 leading-snug line-clamp-2 min-h-[3.25rem]">
+                    {r.title}
+                  </p>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section>
         <h2 className="section-title !text-lg sm:!text-xl mb-3">Inizia da qui</h2>
-        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
           {quickActions.map((action) => (
             <button
               key={action.label}

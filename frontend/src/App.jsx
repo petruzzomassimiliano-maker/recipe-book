@@ -5,6 +5,7 @@ import AddRecipe from './pages/AddRecipe.jsx'
 import ImportRecipe from './pages/ImportRecipe.jsx'
 import RecipeDetail from './pages/RecipeDetail.jsx'
 import Settings from './pages/Settings.jsx'
+import WhatToCook from './pages/WhatToCook.jsx'
 import NotFound from './pages/NotFound.jsx'
 import AppLayout from './components/common/AppLayout.jsx'
 import RequireEdit from './components/common/RequireEdit.jsx'
@@ -23,6 +24,7 @@ export default function App() {
           <Route path="/recipes" element={<Recipes />} />
           <Route path="/recipes/:id" element={<RecipeDetail />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/cosa-cucino" element={<WhatToCook />} />
           <Route element={<RequireEdit />}>
             <Route path="/recipes/new" element={<AddRecipe />} />
             <Route path="/recipes/import" element={<ImportRecipe />} />

@@ -1,34 +1,53 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { moveItem, moveItemByStep, sectionOf } from '../utils/recipeSections.js'
+import { NO_GROUP, groupKey, groupOf, moveItem, moveItemByStep } from '../utils/recipeSections.js'
 
 // Edge zones cover the sticky app header / form toolbar (top) and the mobile
 // action bar + bottom nav (bottom), so dragging onto them scrolls the page.
 const EDGE_TOP_PX = 120
 const EDGE_BOTTOM_PX = 150
 const MAX_SCROLL_STEP = 18
+// Vertical centre of the "fuori dalle sezioni" drop zone below the last row.
+const OUTSIDE_ZONE_OFFSET_PX = 36
 
 /**
  * Drop slots in page coordinates. Besides "before row i", a slot "after row i"
  * exists at the end of each section run, so an item can land at the end of
  * section A or at the start of section B (the header sits between them).
+ * When the list ends inside a section, an extra "outside" slot below the last
+ * row moves the item out of every section (drawn as a zone while dragging).
  */
 function buildSlots(items, rects) {
   const slots = []
   items.forEach((item, i) => {
     const rect = rects[i]
     if (!rect) return
-    const section = sectionOf(item)
-    slots.push({ insertAt: i, section, y: rect.top, row: i, edge: 'before' })
-    const runEnds = i === items.length - 1 || sectionOf(items[i + 1]) !== section
-    if (runEnds) slots.push({ insertAt: i + 1, section, y: rect.bottom, row: i, edge: 'after' })
+    const group = groupOf(item)
+    slots.push({ insertAt: i, group, y: rect.top, row: i, edge: 'before' })
+    const runEnds = i === items.length - 1 || groupKey(items[i + 1]) !== group.key
+    if (runEnds) slots.push({ insertAt: i + 1, group, y: rect.bottom, row: i, edge: 'after' })
   })
+  const last = rects[items.length - 1]
+  if (last && groupKey(items[items.length - 1])) {
+    slots.push({
+      insertAt: items.length,
+      group: NO_GROUP,
+      y: last.bottom + OUTSIDE_ZONE_OFFSET_PX,
+      row: -1,
+      edge: 'outside'
+    })
+  }
   return slots
+}
+
+/** True when the drag may offer the "outside" zone (list ends inside a section). */
+function hasOutsideZone(items) {
+  return items.length > 1 && !!groupKey(items[items.length - 1])
 }
 
 function isNoop(items, from, slot) {
   if (!slot) return true
   const at = slot.insertAt > from ? slot.insertAt - 1 : slot.insertAt
-  return at === from && sectionOf(items[from]) === slot.section
+  return at === from && groupKey(items[from]) === slot.group.key
 }
 
 /**
@@ -95,7 +114,7 @@ export function useDragReorder(items, onChange) {
       cancelAnimationFrame(rafRef.current)
       setState(null)
       if (!commit || !d?.slot) return
-      const next = moveItem(itemsRef.current, d.from, d.slot.insertAt, d.slot.section)
+      const next = moveItem(itemsRef.current, d.from, d.slot.insertAt, d.slot.group)
       if (next !== itemsRef.current) onChangeRef.current(next)
     },
     []
@@ -153,7 +172,8 @@ export function useDragReorder(items, onChange) {
       const list = itemsRef.current
       const next = moveItemByStep(list, index, direction)
       if (next === list) return
-      const sectionOnly = sectionOf(list[index]) !== sectionOf(list[index + direction])
+      const neighbor = list[index + direction]
+      const sectionOnly = !neighbor || groupKey(list[index]) !== groupKey(neighbor)
       pendingFocus.current = sectionOnly ? index : index + direction
       onChangeRef.current(next)
     }
@@ -173,5 +193,9 @@ export function useDragReorder(items, onChange) {
   /** 'before' | 'after' | null — where to draw the drop line for this row. */
   const indicator = (index) => (state?.slot && state.slot.row === index ? state.slot.edge : null)
 
-  return { handleProps, rowRef, rowStyle, isDragging, indicator, active: !!state }
+  /** Drop zone below the list: null when hidden, otherwise { highlighted }. */
+  const outsideZone =
+    state && hasOutsideZone(items) ? { highlighted: state.slot?.edge === 'outside' } : null
+
+  return { handleProps, rowRef, rowStyle, isDragging, indicator, outsideZone, active: !!state }
 }

@@ -3,6 +3,7 @@ import { useAuthStore, useEditAccess } from '../store/authStore.js'
 import { useKeepAwakeStore } from '../store/keepAwakeStore.js'
 import { isWakeLockSupported } from '../components/common/KeepAwakeController.jsx'
 import { apiFetch } from '../services/api.js'
+import BackupSection from '../components/common/BackupSection.jsx'
 
 export default function Settings() {
   const familyAppName = useAuthStore((s) => s.familyAppName)
@@ -160,6 +161,8 @@ export default function Settings() {
           </p>
         )}
       </section>
+
+      <BackupSection />
 
       <section className="card p-4 sm:p-6 space-y-3">
         <h2 className="section-title">Nome dell’app</h2>

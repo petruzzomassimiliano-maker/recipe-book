@@ -6,6 +6,7 @@ import OfflineBanner from './OfflineBanner.jsx'
 import InstallPrompt from './InstallPrompt.jsx'
 import KeepAwakeController from './KeepAwakeController.jsx'
 import UnlockDialog from './UnlockDialog.jsx'
+import TimerDock from './TimerDock.jsx'
 import { useRecipeStore } from '../../store/recipeStore.js'
 import { useAuthStore } from '../../store/authStore.js'
 import { checkEditAccess, getAppStatus } from '../../services/auth.js'
@@ -46,6 +47,7 @@ export default function AppLayout() {
       <MobileTabBar />
       <InstallPrompt />
       <UnlockDialog />
+      <TimerDock />
     </div>
   )
 }

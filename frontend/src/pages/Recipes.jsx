@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useRecipes } from '../hooks/useRecipes.js'
 import RecipeList from '../components/recipe/RecipeList.jsx'
+import { useFavoritesStore } from '../store/favoritesStore.js'
 
 export default function Recipes() {
   const { recipes, searchFilter, setSearchFilter, loadRecipes, isLoading, error } = useRecipes()
@@ -11,7 +12,22 @@ export default function Recipes() {
     loadRecipes(searchFilter || '')
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const visibleCount = recipes.length
+  const [params, setParams] = useSearchParams()
+  const onlyFavorites = params.get('preferite') === '1'
+  const favoriteIds = useFavoritesStore((s) => s.ids)
+  const shown = useMemo(() => {
+    if (!onlyFavorites) return recipes
+    const order = new Map(favoriteIds.map((id, i) => [id, i]))
+    return recipes.filter((r) => order.has(r.id)).sort((a, b) => order.get(a.id) - order.get(b.id))
+  }, [recipes, onlyFavorites, favoriteIds])
+  const toggleFavorites = () => {
+    const next = new URLSearchParams(params)
+    if (onlyFavorites) next.delete('preferite')
+    else next.set('preferite', '1')
+    setParams(next, { replace: true })
+  }
+
+  const visibleCount = shown.length
 
   const handleSearch = (e) => {
     e.preventDefault()
@@ -61,7 +77,7 @@ export default function Recipes() {
         <div className="flex gap-2">
           <input
             className="input-field !min-h-[44px] !py-2.5"
-            placeholder="Cerca titolo o tag…"
+            placeholder="Cerca titolo, tag o ingrediente…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             aria-label="Cerca ricette"
@@ -70,6 +86,39 @@ export default function Recipes() {
           <button type="submit" className="btn-secondary shrink-0 !min-h-[44px] !px-4 !py-2.5">
             Cerca
           </button>
+        </div>
+        <div className="flex gap-2 mt-2 overflow-x-auto scrollbar-none">
+          <button
+            type="button"
+            onClick={toggleFavorites}
+            aria-pressed={onlyFavorites}
+            className={`shrink-0 inline-flex items-center gap-1.5 min-h-[40px] px-3.5 rounded-full border text-sm font-semibold ${
+              onlyFavorites
+                ? 'bg-amber-50 border-amber-300 text-amber-800'
+                : 'bg-white border-stone-200 text-stone-600'
+            }`}
+          >
+            <span aria-hidden>★</span> Preferite{favoriteIds.length ? ` (${favoriteIds.length})` : ''}
+          </button>
+          <Link
+            to="/cosa-cucino"
+            className="shrink-0 inline-flex items-center min-h-[40px] px-3.5 rounded-full border border-stone-200 bg-white text-sm font-semibold text-stone-600"
+          >
+            Cosa cucino con quello che ho?
+          </Link>
+          {searchFilter ? (
+            <button
+              type="button"
+              className="shrink-0 inline-flex items-center min-h-[40px] px-3 text-sm text-stone-400"
+              onClick={() => {
+                setQuery('')
+                setSearchFilter('')
+                loadRecipes('')
+              }}
+            >
+              Azzera ricerca
+            </button>
+          ) : null}
         </div>
       </form>
 
@@ -86,11 +135,16 @@ export default function Recipes() {
         <p className="text-stone-400">Caricamento…</p>
       ) : (
         <RecipeList
-          recipes={recipes}
+          recipes={shown}
+          emptyTitle={onlyFavorites ? 'Nessuna preferita' : searchFilter ? 'Nessun risultato' : undefined}
           emptyMessage={
-            searchFilter
-              ? 'Nessuna ricetta trovata. Prova un’altra parola.'
-              : 'Aggiungi la prima ricetta con il pulsante in alto.'
+            onlyFavorites
+              ? searchFilter
+                ? 'Nessuna preferita per questa ricerca.'
+                : 'Tocca la stellina su una ricetta per metterla tra le preferite (vale su questo dispositivo).'
+              : searchFilter
+                ? 'Nessuna ricetta trovata. Prova un’altra parola.'
+                : 'Aggiungi la prima ricetta con il pulsante in alto.'
           }
         />
       )}

@@ -31,3 +31,11 @@ export function generateStorageAdvice(recipeId) {
     body: JSON.stringify({ recipeId })
   })
 }
+
+/** Ingredients at home → recipes of the family book that fit best. */
+export function suggestWhatToCook(have) {
+  return apiFetch('/api/gemini/what-to-cook', {
+    method: 'POST',
+    body: JSON.stringify({ have })
+  })
+}

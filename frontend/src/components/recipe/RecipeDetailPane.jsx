@@ -7,6 +7,9 @@ import StepInstruction from './StepInstruction.jsx'
 import CookingMethodsSection from './CookingMethodsSection.jsx'
 import RecipeAiChat from './RecipeAiChat.jsx'
 import StorageSection from './StorageSection.jsx'
+import CookingMode from './CookingMode.jsx'
+import DiarySection from './DiarySection.jsx'
+import FavoriteButton from './FavoriteButton.jsx'
 import { analyzeCookingMethods, generateStorageAdvice } from '../../services/gemini.js'
 import { getRecipe } from '../../services/recipes.js'
 import { useRecipeStore } from '../../store/recipeStore.js'
@@ -54,6 +57,8 @@ export default function RecipeDetailPane({
   const [removing, setRemoving] = useState(false)
   const [checkedIng, setCheckedIng] = useState(() => new Set())
   const [moreOpen, setMoreOpen] = useState(false)
+  const [cookingOpen, setCookingOpen] = useState(false)
+  const [diarySignal, setDiarySignal] = useState(0)
 
   const current = recipe?.id === recipeId ? recipe : null
   const baseServings = Math.max(1, Number(current?.metadata?.servings) || 1)
@@ -72,6 +77,7 @@ export default function RecipeDetailPane({
   useEffect(() => {
     setCheckedIng(new Set())
     setMoreOpen(false)
+    setCookingOpen(false)
     setActionMsg(null)
     setStorageError(null)
   }, [recipeId])
@@ -169,6 +175,13 @@ export default function RecipeDetailPane({
       setStorageLoading(false)
     }
   })
+
+  /** Diary saved/deleted on the server → refresh this view, the cache and the list row. */
+  const applyRecipeUpdate = (updated) => {
+    if (!updated?.id) return
+    setRecipe(updated)
+    useRecipeStore.getState().upsertRecipe(updated)
+  }
 
   const handlePdf = async () => {
     if (!current || pdfBusy) return
@@ -321,7 +334,10 @@ export default function RecipeDetailPane({
         ) : null}
 
         <div className={current.imageUrl ? 'mt-4' : 'mt-1'}>
-          <h1 className={titleClass}>{current.title}</h1>
+          <div className="flex items-start justify-between gap-3">
+            <h1 className={titleClass}>{current.title}</h1>
+            <FavoriteButton recipeId={current.id} title={current.title} className="shrink-0 -mt-0.5" />
+          </div>
           {metaBits.length > 0 && (
             <p className="mt-2 text-sm text-stone-500 flex flex-wrap gap-x-2 gap-y-0.5">
               {metaBits.map((bit, i) => (
@@ -335,9 +351,19 @@ export default function RecipeDetailPane({
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
+          {displaySteps.length > 0 && (
+            <button
+              type="button"
+              className="btn-primary !py-2.5 !px-4 text-sm"
+              onClick={() => setCookingOpen(true)}
+              title="Un passo alla volta, testo grande, schermo sempre acceso"
+            >
+              Cucina
+            </button>
+          )}
           <button
             type="button"
-            className="btn-primary !py-2.5 !px-4 text-sm"
+            className="btn-secondary !py-2.5 !px-4 text-sm"
             onClick={handlePdf}
             disabled={pdfBusy}
             title="Crea un PDF della ricetta da salvare o condividere"
@@ -441,6 +467,12 @@ export default function RecipeDetailPane({
           >
             Cottura
           </a>
+          <a
+            href={`#${aid('diario')}`}
+            className="shrink-0 inline-flex items-center min-h-[40px] px-3.5 rounded-full bg-white border border-stone-200 text-sm font-medium text-stone-500"
+          >
+            Diario{current.diary?.length ? ` (${current.diary.length})` : ''}
+          </a>
         </div>
       </nav>
 
@@ -504,9 +536,11 @@ export default function RecipeDetailPane({
 
           {scaledIngredients.length ? (
             <div className="space-y-5">
-            {groupBySection(scaledIngredients).map((group) => (
+            {groupBySection(scaledIngredients).map((group, gi) => (
             <div key={`ing-group-${group.startIndex}`}>
-            {group.section ? <h3 className={SECTION_HEADING_CLASS}>{group.section}</h3> : null}
+            {group.section || gi > 0 ? (
+              <h3 className={SECTION_HEADING_CLASS}>{group.section || 'Altri ingredienti'}</h3>
+            ) : null}
             <ul>
               {group.entries.map(({ item: ing }) => {
                 const qty = formatScaledQty(ing.quantity, ing.unit)
@@ -578,10 +612,10 @@ export default function RecipeDetailPane({
           <h2 className="text-lg font-semibold text-stone-900 mb-4">Preparazione</h2>
           {displaySteps.length ? (
             <div className="space-y-7">
-              {groupBySection(displaySteps).map((group) => (
+              {groupBySection(displaySteps).map((group, gi) => (
                 <div key={`step-group-${group.startIndex}`}>
-                  {group.section ? (
-                    <h3 className={`${SECTION_HEADING_CLASS} mb-4`}>{group.section}</h3>
+                  {group.section || gi > 0 ? (
+                    <h3 className={`${SECTION_HEADING_CLASS} mb-4`}>{group.section || 'Altri passi'}</h3>
                   ) : null}
                   <ol className="space-y-5">
                     {group.entries.map(({ item: step }) => (
@@ -590,7 +624,14 @@ export default function RecipeDetailPane({
                           {step.order}
                         </span>
                         <div className="pt-1 min-w-0 flex-1 text-[16px] sm:text-[15px] leading-relaxed">
-                          <StepInstruction text={step.instruction} />
+                          <StepInstruction
+                            text={step.instruction}
+                            timer={{
+                              recipeId: current.id,
+                              recipeTitle: current.title,
+                              stepLabel: `Passo ${step.order}`
+                            }}
+                          />
                         </div>
                       </li>
                     ))}
@@ -629,6 +670,16 @@ export default function RecipeDetailPane({
 
       </div>
 
+      <div className="mt-4">
+        <DiarySection
+          id={aid('diario')}
+          recipe={current}
+          onRecipeChange={applyRecipeUpdate}
+          withEdit={withEdit}
+          openSignal={diarySignal}
+        />
+      </div>
+
       {current.sourceUrl && (
         <p className="mt-6 text-xs text-stone-400">
           Fonte:{' '}
@@ -642,6 +693,20 @@ export default function RecipeDetailPane({
           </a>
         </p>
       )}
+
+      <CookingMode
+        open={cookingOpen}
+        onClose={() => setCookingOpen(false)}
+        recipe={current}
+        steps={displaySteps}
+        ingredients={scaledIngredients}
+        checkedIng={checkedIng}
+        onToggleIngredient={toggleIngredient}
+        onFinished={() => {
+          setCookingOpen(false)
+          setDiarySignal((n) => n + 1)
+        }}
+      />
 
       <RecipeAiChat
         recipeId={current.id}

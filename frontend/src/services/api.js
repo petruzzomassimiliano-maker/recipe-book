@@ -2,7 +2,7 @@ import { useAuthStore } from '../store/authStore.js'
 
 const WORKER_URL = (import.meta.env.VITE_WORKER_URL || '').replace(/\/$/, '')
 
-function apiUrl(path) {
+export function apiUrl(path) {
   if (!path.startsWith('/')) return `${WORKER_URL}/${path}`
   return `${WORKER_URL}${path}`
 }

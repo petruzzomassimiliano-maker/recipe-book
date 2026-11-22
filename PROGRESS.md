@@ -41,6 +41,31 @@
 
 ---
 
+## Sessione 23 — 2026-11-22 — Ricerca, preferite, cosa cucino, timer, modalità cucina, diario, backup, doppioni
+
+| Funzione | Dove | Note |
+|----------|------|------|
+| Ricerca anche negli ingredienti | `worker/src/routes/recipes.js` (`matchesQuery`) | Parole in AND, senza accenti, singolare/plurale. L'indice ora ha `ingredientNames`, `sourceUrl`, `totalTime`, `lastCookedAt`, `iv: 2`; le righe vecchie si aggiornano da sole a `GET /api/recipes`, 20 per richiesta (limite subrequest Cloudflare) |
+| Preferite | `store/favoritesStore.js`, `FavoriteButton.jsx` | **Per dispositivo** (localStorage, niente PIN). Stellina in scheda/elenco, filtro `?preferite=1`, riga in Home; incluse nel backup |
+| Cosa cucino? | `pages/WhatToCook.jsx` (`/cosa-cucino`), `utils/ingredientMatch.js`, `POST /api/gemini/what-to-cook` | Confronto locale immediato (dispensa base esclusa dai mancanti) + «Chiedi all'IA» (PIN) che sceglie solo tra gli id del ricettario |
+| Timer nei passi | `utils/stepTimers.js`, `StepInstruction.jsx`, `store/timerStore.js`, `components/common/TimerDock.jsx` | «20 minuti», «1 ora e 30 minuti», «10-15 min» (limite inferiore), «un'ora e mezza», «mezz'ora», «25'». Più timer, persistiti con ora di fine; suono WebAudio + vibrazione + notifica (se permessa) finché non si preme Ferma |
+| Modalità cucina | `CookingMode.jsx` | Un passo alla volta, testo grande, swipe/frecce, ingredienti spuntabili, Wake Lock propria, «indietro» Android la chiude; «Fatto!» apre il diario |
+| Diario | `DiarySection.jsx`, `POST/DELETE /api/recipes/:id/diary` | Data, voto 1-5, nota, foto. Il PUT del form conserva `diary` |
+| Backup + ripristino | `utils/backup.js`, `components/common/BackupSection.jsx`, `POST /api/recipes/restore` | Il backup si crea **nel browser** (JSON con ricette + foto in data URL); il ripristino va una ricetta alla volta, mantiene gli id, salta le esistenti o le sovrascrive su conferma, ricarica le foto proprie se non esistono più |
+| Avviso doppioni | `utils/duplicates.js`, `ImportRecipe.jsx` | Stesso URL (normalizzato, YouTube per id video) già all'incolla; titolo simile (Jaccard ≥ 0,75) dopo l'estrazione |
+
+Test: worker con Dropbox simulato in memoria (ricerca, backfill, diario, PUT, restore, PIN) + logica frontend (timer, cosa cucino, doppioni). UI non provata in browser.
+
+## Sessione 22 — 2026-11-22 — Sezioni nel form
+
+### Bug corretti
+| Bug | Fix |
+|-----|-----|
+| Nome sezione: impossibile scrivere spazi (il campo mostrava il nome già `trim`) | Il campo mostra il nome così come scritto; pulizia solo al salvataggio (`finalizeSections`) |
+| Nome sezione svuotato → la sezione spariva; nome uguale a quello della sezione accanto → le due si fondevano mentre scrivevi | Nel form ogni sezione ha un id interno `sid` (`withSectionIds`, mai salvato: il worker lo scarta); raggruppamento per `groupKey` |
+| Impossibile spostare un ingrediente/passo fuori dalle sezioni quando tutta la lista è in sezioni | Durante il trascinamento compare la zona «Rilascia qui per togliere…» in fondo; frecce ↑/↓ all'inizio/fine lista tolgono dalla sezione; «Togli titolo» → «Togli sezione» (anche per sezioni senza nome) |
+| Gruppo senza sezione dopo una sezione sembrava farne parte in scheda/PDF | Etichetta «Altri ingredienti» / «Altri passi» |
+
 ## Sessione 21 — 2026-11-22 — Audit ed estrazione testo (import da sito)
 
 ### Metodo

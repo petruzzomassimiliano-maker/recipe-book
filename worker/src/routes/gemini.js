@@ -288,6 +288,63 @@ ${
 })
 
 /**
+ * POST /api/gemini/what-to-cook
+ * Body: { have: string[] } — ingredients at home → best recipes from the family book.
+ * Returns { suggestions: [{ id, title, reason, missing: string[] }] } (ids from the index only).
+ */
+gemini.post('/what-to-cook', async (c) => {
+  try {
+    const keys = collectGeminiKeys(c.env)
+    if (!keys.length) return c.json({ error: 'GEMINI_API_KEY non configurata' }, 500)
+    const body = await c.req.json().catch(() => ({}))
+    const have = (Array.isArray(body.have) ? body.have : [])
+      .map((h) => String(h || '').trim().slice(0, 60))
+      .filter(Boolean)
+      .slice(0, 30)
+    if (!have.length) return c.json({ error: 'Scrivi almeno un ingrediente' }, 400)
+
+    const index = await dbx(c).getRecipesIndex()
+    const catalog = index
+      .filter((e) => e?.id && e.title)
+      .map((e) => ({
+        id: e.id,
+        t: e.title,
+        i: (e.ingredientNames || []).slice(0, 40)
+      }))
+    if (!catalog.length) return c.json({ success: true, data: { suggestions: [] } })
+
+    const prompt = `Ho in casa: ${have.join(', ')}.
+Ecco il ricettario di famiglia (JSON: id, t = titolo, i = ingredienti; se i è vuoto deduci dal titolo):
+${JSON.stringify(catalog)}
+
+Scegli fino a 6 ricette DI QUESTO RICETTARIO che conviene fare con quello che ho, dalla più adatta.
+Considera sinonimi e varianti (es. "passata" ~ "pomodoro", "grana" ~ "parmigiano").
+Dispensa di base sempre disponibile: sale, pepe, olio, acqua, zucchero, farina — non contarli come mancanti.
+Rispondi SOLO con JSON:
+{"suggestions":[{"id":"…","reason":"frase breve in italiano su perché va bene","missing":["ingrediente che manca", …]}]}
+Usa solo id presenti nell'elenco. Se nessuna ricetta è adatta, restituisci {"suggestions":[]}.`
+
+    const text = await geminiGenerateContent(c.env, [{ text: prompt }], { temperature: 0.2, json: true })
+    const parsed = parseGeminiJson(text)
+    const byId = new Map(catalog.map((r) => [r.id, r]))
+    const seen = new Set()
+    const suggestions = (Array.isArray(parsed?.suggestions) ? parsed.suggestions : [])
+      .filter((s) => byId.has(s?.id) && !seen.has(s.id) && seen.add(s.id))
+      .slice(0, 6)
+      .map((s) => ({
+        id: s.id,
+        title: byId.get(s.id).t,
+        reason: String(s.reason || '').slice(0, 300),
+        missing: (Array.isArray(s.missing) ? s.missing : []).map((m) => String(m).slice(0, 60)).slice(0, 12)
+      }))
+    return c.json({ success: true, data: { suggestions } })
+  } catch (err) {
+    console.error('[gemini/what-to-cook]', err.message)
+    return c.json({ error: err.message || 'Suggerimenti non riusciti' }, 500)
+  }
+})
+
+/**
  * POST /api/gemini/from-photo
  * Body: { imageBase64, mimeType? } — foto o PDF di una ricetta → draft (come scraper)
  */

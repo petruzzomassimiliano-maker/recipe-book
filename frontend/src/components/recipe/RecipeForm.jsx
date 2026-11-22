@@ -3,27 +3,34 @@ import { useDragReorder } from '../../hooks/useDragReorder.js'
 import { useSessionDraft } from '../../hooks/useSessionDraft.js'
 import { readAndCompressImage, uploadRecipeImage } from '../../services/media.js'
 import {
+  clearRun,
+  finalizeSections,
+  groupKey,
   hasSections,
+  inNewSection,
   insertIntoRun,
   isRunStart,
   nextSectionName,
   renameRun,
-  sectionOf
+  withSectionIds
 } from '../../utils/recipeSections.js'
 
-const withOptionalSection = (item, section) => (section ? { ...item, section } : item)
-const emptyIngredient = (section = '') =>
-  withOptionalSection({ name: '', quantity: '', unit: 'g', notes: '' }, section)
-const emptyStep = (section = '') => withOptionalSection({ instruction: '' }, section)
+const emptyIngredient = () => ({ name: '', quantity: '', unit: 'g', notes: '' })
+const emptyStep = () => ({ instruction: '' })
+/** Keep only the grouping fields of a saved item (section name / edit-time id). */
+const sectionFields = (item) => ({
+  ...(item?.sid ? { sid: item.sid } : {}),
+  ...(item?.section ? { section: item.section } : {})
+})
 
-function SectionRunHeader({ value, placeholder, addLabel, onRename, onAdd, onClear }) {
+function SectionRunHeader({ value, sectioned, placeholder, addLabel, onRename, onAdd, onClear }) {
   return (
     <div className="flex flex-wrap items-center gap-2 pt-3 first:pt-0">
       <input
         className="input-field flex-1 min-w-[10rem] !min-h-[40px] !py-1.5 font-semibold text-stone-800"
         value={value}
         onChange={(e) => onRename(e.target.value)}
-        placeholder={placeholder}
+        placeholder={sectioned ? placeholder : 'Senza sezione — scrivi un nome per crearne una'}
         aria-label="Nome sezione"
       />
       <button
@@ -33,13 +40,14 @@ function SectionRunHeader({ value, placeholder, addLabel, onRename, onAdd, onCle
       >
         {addLabel}
       </button>
-      {value ? (
+      {sectioned ? (
         <button
           type="button"
           className="inline-flex items-center min-h-[40px] px-2 text-xs text-stone-400 hover:text-stone-600"
           onClick={onClear}
+          title="Gli elementi restano, ma fuori da ogni sezione"
         >
-          Togli titolo
+          Togli sezione
         </button>
       ) : null}
     </div>
@@ -64,6 +72,23 @@ function DragHandle({ label, className = '', ...props }) {
         <circle cx="11" cy="16" r="1.6" />
       </svg>
     </button>
+  )
+}
+
+/** Shown only while dragging, below the list, when the list ends inside a section. */
+function OutsideDropZone({ zone, label }) {
+  if (!zone) return null
+  return (
+    <div
+      className={`flex items-center justify-center min-h-[48px] rounded-xl border-2 border-dashed px-3 text-sm font-medium transition-colors ${
+        zone.highlighted
+          ? 'border-primary bg-primary/10 text-primary'
+          : 'border-stone-300 bg-stone-50 text-stone-500'
+      }`}
+      aria-hidden
+    >
+      {label}
+    </div>
   )
 }
 
@@ -128,20 +153,20 @@ function fromRecipe(recipe) {
     notes: recipe.notes || '',
     imageUrl: recipe.imageUrl || '',
     ingredients: recipe.ingredients?.length
-      ? recipe.ingredients.map((i) =>
-          withOptionalSection(
-            {
-              name: i.name || '',
-              quantity: i.quantity ?? '',
-              unit: i.unit || '',
-              notes: i.notes || ''
-            },
-            sectionOf(i)
-          )
+      ? withSectionIds(
+          recipe.ingredients.map((i) => ({
+            name: i.name || '',
+            quantity: i.quantity ?? '',
+            unit: i.unit || '',
+            notes: i.notes || '',
+            ...sectionFields(i)
+          }))
         )
       : [emptyIngredient()],
     steps: recipe.steps?.length
-      ? recipe.steps.map((s) => withOptionalSection({ instruction: s.instruction || '' }, sectionOf(s)))
+      ? withSectionIds(
+          recipe.steps.map((s) => ({ instruction: s.instruction || '', ...sectionFields(s) }))
+        )
       : [emptyStep()]
   }
 }
@@ -191,6 +216,16 @@ export default function RecipeForm({
 
   const update = (patch) => setForm((prev) => ({ ...prev, ...patch }))
 
+  // Drafts saved before section ids existed: give their sections an id once.
+  useEffect(() => {
+    if (!form) return
+    const ingredients = withSectionIds(form.ingredients || [])
+    const steps = withSectionIds(form.steps || [])
+    if (ingredients !== form.ingredients || steps !== form.steps) {
+      setForm((prev) => ({ ...prev, ingredients, steps }))
+    }
+  }, [form, setForm])
+
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
 
@@ -232,8 +267,8 @@ export default function RecipeForm({
         tags: form.tags,
         notes: form.notes,
         imageUrl: (form.imageUrl.trim().startsWith('data:') ? '' : form.imageUrl.trim()) || null,
-        ingredients: form.ingredients,
-        steps: form.steps
+        ingredients: finalizeSections(form.ingredients),
+        steps: finalizeSections(form.steps)
       })
       clear()
     } catch (err) {
@@ -262,8 +297,8 @@ export default function RecipeForm({
 
   const ingredientsSectioned = hasSections(form.ingredients)
   const stepsSectioned = hasSections(form.steps)
-  const lastIngredientSection = sectionOf(form.ingredients[form.ingredients.length - 1])
-  const lastStepSection = sectionOf(form.steps[form.steps.length - 1])
+  const addAtEnd = (items, item) =>
+    items.length ? insertIntoRun(items, items.length - 1, item) : [item]
 
   const handleCancel = () => {
     clear()
@@ -503,7 +538,10 @@ export default function RecipeForm({
               className="inline-flex items-center min-h-[40px] px-2 text-sm text-stone-500 font-semibold hover:text-stone-800"
               onClick={() =>
                 update({
-                  ingredients: [...form.ingredients, emptyIngredient(nextSectionName(form.ingredients))]
+                  ingredients: [
+                    ...form.ingredients,
+                    inNewSection(emptyIngredient(), nextSectionName(form.ingredients))
+                  ]
                 })
               }
               title="Dividi in componenti (es. Pan di Spagna, Crema…)"
@@ -514,7 +552,7 @@ export default function RecipeForm({
               type="button"
               className="inline-flex items-center min-h-[40px] px-2 text-sm text-primary font-semibold"
               onClick={() =>
-                update({ ingredients: [...form.ingredients, emptyIngredient(lastIngredientSection)] })
+                update({ ingredients: addAtEnd(form.ingredients, emptyIngredient()) })
               }
             >
               + Aggiungi
@@ -538,14 +576,15 @@ export default function RecipeForm({
             <Fragment key={idx}>
             {ingredientsSectioned && isRunStart(form.ingredients, idx) && (
               <SectionRunHeader
-                value={sectionOf(row)}
+                value={row.section || ''}
+                sectioned={!!groupKey(row)}
                 placeholder="Nome sezione (es. Pan di Spagna)"
                 addLabel="+ Ingrediente"
                 onRename={(name) => update({ ingredients: renameRun(form.ingredients, idx, name) })}
                 onAdd={() =>
                   update({ ingredients: insertIntoRun(form.ingredients, idx, emptyIngredient()) })
                 }
-                onClear={() => update({ ingredients: renameRun(form.ingredients, idx, '') })}
+                onClear={() => update({ ingredients: clearRun(form.ingredients, idx) })}
               />
             )}
             <div
@@ -664,6 +703,7 @@ export default function RecipeForm({
             </Fragment>
           ))}
         </div>
+        <OutsideDropZone zone={ingredientDrag.outsideZone} label="Rilascia qui per togliere l’ingrediente dalla sezione" />
       </section>
 
       <section className={sectionClass}>
@@ -674,7 +714,7 @@ export default function RecipeForm({
               type="button"
               className="inline-flex items-center min-h-[40px] px-2 text-sm text-stone-500 font-semibold hover:text-stone-800"
               onClick={() =>
-                update({ steps: [...form.steps, emptyStep(nextSectionName(form.steps))] })
+                update({ steps: [...form.steps, inNewSection(emptyStep(), nextSectionName(form.steps))] })
               }
               title="Dividi il procedimento per componente"
             >
@@ -683,7 +723,7 @@ export default function RecipeForm({
             <button
               type="button"
               className="inline-flex items-center min-h-[40px] px-2 text-sm text-primary font-semibold"
-              onClick={() => update({ steps: [...form.steps, emptyStep(lastStepSection)] })}
+              onClick={() => update({ steps: addAtEnd(form.steps, emptyStep()) })}
             >
               + Aggiungi
             </button>
@@ -695,12 +735,13 @@ export default function RecipeForm({
             <Fragment key={idx}>
             {stepsSectioned && isRunStart(form.steps, idx) && (
               <SectionRunHeader
-                value={sectionOf(row)}
+                value={row.section || ''}
+                sectioned={!!groupKey(row)}
                 placeholder="Nome sezione (es. Crema al burro)"
                 addLabel="+ Passo"
                 onRename={(name) => update({ steps: renameRun(form.steps, idx, name) })}
                 onAdd={() => update({ steps: insertIntoRun(form.steps, idx, emptyStep()) })}
-                onClear={() => update({ steps: renameRun(form.steps, idx, '') })}
+                onClear={() => update({ steps: clearRun(form.steps, idx) })}
               />
             )}
             <div
@@ -747,6 +788,7 @@ export default function RecipeForm({
             </Fragment>
           ))}
         </div>
+        <OutsideDropZone zone={stepDrag.outsideZone} label="Rilascia qui per togliere il passo dalla sezione" />
       </section>
       </div>
 

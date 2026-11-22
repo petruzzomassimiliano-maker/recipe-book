@@ -1,11 +1,37 @@
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import RecipeForm from '../components/recipe/RecipeForm.jsx'
 import { fetchRecipeFromUrl, isYoutubeUrl, parseYoutubeRecipe } from '../services/scraper.js'
 import { extractRecipeFromPhoto } from '../services/gemini.js'
 import { readAndCompressImage } from '../services/media.js'
 import { useRecipes } from '../hooks/useRecipes.js'
 import { clearDraft, draftKey, useSessionDraft } from '../hooks/useSessionDraft.js'
-import { useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { listRecipes } from '../services/recipes.js'
+import { useRecipeStore } from '../store/recipeStore.js'
+import { findDuplicates } from '../utils/duplicates.js'
+
+/** "Questa ricetta c'è già" — links to the existing one(s). */
+function DuplicateNotice({ matches }) {
+  if (!matches?.length) return null
+  const same = matches.some((m) => m.reason === 'same')
+  return (
+    <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-900" role="status">
+      <p className="font-semibold">
+        {same ? 'Questa ricetta è già nel ricettario:' : 'Nel ricettario c’è già una ricetta simile:'}
+      </p>
+      <ul className="mt-1 space-y-0.5">
+        {matches.map(({ recipe }) => (
+          <li key={recipe.id}>
+            <Link to={`/recipes/${recipe.id}`} target="_blank" rel="noreferrer" className="underline font-medium">
+              {recipe.title}
+            </Link>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-1 text-xs text-amber-800">Puoi salvarla lo stesso se è una versione diversa.</p>
+    </div>
+  )
+}
 
 const IMPORT_PAGE_KEY = draftKey('import-page')
 
@@ -60,6 +86,25 @@ export default function ImportRecipe() {
   const needTranscript = Boolean(page.needTranscript)
   const youtube = isYoutubeUrl(url)
   const fromFile = /^(photo|pdf):/.test(url)
+
+  // Full list for the duplicate check (the store may hold only the last search)
+  const [allRecipes, setAllRecipes] = useState(() => useRecipeStore.getState().recipes || [])
+  useEffect(() => {
+    listRecipes('')
+      .then((res) => setAllRecipes(res.data || []))
+      .catch(() => {})
+  }, [])
+  const urlDuplicates = useMemo(
+    () => (!scrape && !fromFile && url ? findDuplicates({ sourceUrl: url }, allRecipes) : []),
+    [scrape, fromFile, url, allRecipes]
+  )
+  const scrapeDuplicates = useMemo(
+    () =>
+      scrape
+        ? findDuplicates({ sourceUrl: fromFile ? null : scrape.sourceUrl || url, title: scrape.title }, allRecipes)
+        : [],
+    [scrape, fromFile, url, allRecipes]
+  )
 
   const applyScrape = (data, sourceUrl) => {
     const nextScrape = {
@@ -193,6 +238,9 @@ export default function ImportRecipe() {
 
       {!scrape && (
         <>
+          <div className="max-w-3xl">
+            <DuplicateNotice matches={urlDuplicates} />
+          </div>
           <form onSubmit={handleFetch} className="card p-5 sm:p-6 mb-4 space-y-4 max-w-3xl">
             <label className="block">
               <span className="text-sm font-medium text-stone-700">URL sito o YouTube</span>
@@ -322,6 +370,7 @@ export default function ImportRecipe() {
               {scrape.extractQuality?.score != null ? ` · score ${scrape.extractQuality.score}` : ''}
             </p>
           )}
+          <DuplicateNotice matches={scrapeDuplicates} />
           {scrape.extractWarning && (
             <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
               {scrape.extractWarning}

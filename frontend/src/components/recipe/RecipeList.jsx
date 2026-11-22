@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import FavoriteButton from './FavoriteButton.jsx'
 
 const difficultyLabel = {
   easy: 'Facile',
@@ -17,11 +18,11 @@ function RecipeMeta({ recipe }) {
  * Mobile: single-column list (image left + text) for denser scanning.
  * sm+: visual grid of cards (food catalog pattern).
  */
-export default function RecipeList({ recipes, emptyMessage }) {
+export default function RecipeList({ recipes, emptyMessage, emptyTitle = 'Nessuna ricetta ancora' }) {
   if (!recipes?.length) {
     return (
       <div className="rounded-2xl bg-white border border-dashed border-stone-200 p-8 sm:p-14 text-center">
-        <h3 className="font-display text-xl font-semibold text-stone-900 mb-2">Nessuna ricetta ancora</h3>
+        <h3 className="font-display text-xl font-semibold text-stone-900 mb-2">{emptyTitle}</h3>
         <p className="text-stone-500 text-sm max-w-sm mx-auto leading-relaxed">{emptyMessage}</p>
       </div>
     )
@@ -32,7 +33,7 @@ export default function RecipeList({ recipes, emptyMessage }) {
       <ul className="sm:hidden space-y-2.5" aria-label="Elenco ricette">
         {recipes.map((recipe) => {
           return (
-            <li key={recipe.id}>
+            <li key={recipe.id} className="relative">
               <Link
                 to={`/recipes/${recipe.id}`}
                 className="flex gap-3 items-center min-h-[88px] rounded-2xl border border-stone-200/80 bg-white p-2 pr-3 active:bg-stone-50 transition-colors"
@@ -61,10 +62,13 @@ export default function RecipeList({ recipes, emptyMessage }) {
                     <RecipeMeta recipe={recipe} />
                   </p>
                 </div>
-                <span className="text-stone-300 shrink-0" aria-hidden>
-                  →
-                </span>
+                <span className="w-11 shrink-0" aria-hidden />
               </Link>
+              <FavoriteButton
+                recipeId={recipe.id}
+                title={recipe.title}
+                className="absolute right-2 top-1/2 -translate-y-1/2 !border-0 !bg-transparent"
+              />
             </li>
           )
         })}
@@ -73,10 +77,10 @@ export default function RecipeList({ recipes, emptyMessage }) {
       <div className="hidden sm:grid grid-cols-2 lg:grid-cols-3 gap-4">
         {recipes.map((recipe) => {
           return (
+            <div key={recipe.id} className="relative">
             <Link
-              key={recipe.id}
               to={`/recipes/${recipe.id}`}
-              className="group card overflow-hidden p-0 hover:-translate-y-0.5 transition-transform"
+              className="group card block h-full overflow-hidden p-0 hover:-translate-y-0.5 transition-transform"
             >
               {recipe.imageUrl ? (
                 <div className="aspect-[16/10] bg-stone-100 overflow-hidden">
@@ -113,6 +117,13 @@ export default function RecipeList({ recipes, emptyMessage }) {
                 )}
               </div>
             </Link>
+            <FavoriteButton
+              recipeId={recipe.id}
+              title={recipe.title}
+              variant="overlay"
+              className="absolute top-2.5 right-2.5"
+            />
+            </div>
           )
         })}
       </div>
