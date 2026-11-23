@@ -13,9 +13,6 @@ export const useTimerStore = create(
   persist(
     (set) => ({
       timers: [],
-      // Cooking mode has a tall bottom bar: lift the dock above it
-      raised: false,
-      setRaised: (raised) => set({ raised }),
       start: ({ seconds, label, recipeId = null, recipeTitle = '' }) => {
         const id = newId()
         const durationMs = Math.round(seconds * 1000)

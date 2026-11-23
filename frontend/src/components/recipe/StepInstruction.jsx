@@ -44,7 +44,7 @@ function TimedText({ text, timer }) {
 /**
  * Render a preparation step with kitchen-friendly typography:
  * ~1.7 line-height, bullets when present, breathing room between lines.
- * `textClass` overrides the size (cooking mode uses larger text).
+ * `textClass` overrides the text size.
  */
 export default function StepInstruction({ text, className = '', timer = null, textClass = '' }) {
   const raw = String(text || '').trim()

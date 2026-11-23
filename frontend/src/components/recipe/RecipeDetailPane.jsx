@@ -7,7 +7,6 @@ import StepInstruction from './StepInstruction.jsx'
 import CookingMethodsSection from './CookingMethodsSection.jsx'
 import RecipeAiChat from './RecipeAiChat.jsx'
 import StorageSection from './StorageSection.jsx'
-import CookingMode from './CookingMode.jsx'
 import DiarySection from './DiarySection.jsx'
 import FavoriteButton from './FavoriteButton.jsx'
 import { analyzeCookingMethods, generateStorageAdvice } from '../../services/gemini.js'
@@ -57,8 +56,6 @@ export default function RecipeDetailPane({
   const [removing, setRemoving] = useState(false)
   const [checkedIng, setCheckedIng] = useState(() => new Set())
   const [moreOpen, setMoreOpen] = useState(false)
-  const [cookingOpen, setCookingOpen] = useState(false)
-  const [diarySignal, setDiarySignal] = useState(0)
 
   const current = recipe?.id === recipeId ? recipe : null
   const baseServings = Math.max(1, Number(current?.metadata?.servings) || 1)
@@ -77,7 +74,6 @@ export default function RecipeDetailPane({
   useEffect(() => {
     setCheckedIng(new Set())
     setMoreOpen(false)
-    setCookingOpen(false)
     setActionMsg(null)
     setStorageError(null)
   }, [recipeId])
@@ -351,19 +347,9 @@ export default function RecipeDetailPane({
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
-          {displaySteps.length > 0 && (
-            <button
-              type="button"
-              className="btn-primary !py-2.5 !px-4 text-sm"
-              onClick={() => setCookingOpen(true)}
-              title="Un passo alla volta, testo grande, schermo sempre acceso"
-            >
-              Cucina
-            </button>
-          )}
           <button
             type="button"
-            className="btn-secondary !py-2.5 !px-4 text-sm"
+            className="btn-primary !py-2.5 !px-4 text-sm"
             onClick={handlePdf}
             disabled={pdfBusy}
             title="Crea un PDF della ricetta da salvare o condividere"
@@ -676,7 +662,6 @@ export default function RecipeDetailPane({
           recipe={current}
           onRecipeChange={applyRecipeUpdate}
           withEdit={withEdit}
-          openSignal={diarySignal}
         />
       </div>
 
@@ -693,20 +678,6 @@ export default function RecipeDetailPane({
           </a>
         </p>
       )}
-
-      <CookingMode
-        open={cookingOpen}
-        onClose={() => setCookingOpen(false)}
-        recipe={current}
-        steps={displaySteps}
-        ingredients={scaledIngredients}
-        checkedIng={checkedIng}
-        onToggleIngredient={toggleIngredient}
-        onFinished={() => {
-          setCookingOpen(false)
-          setDiarySignal((n) => n + 1)
-        }}
-      />
 
       <RecipeAiChat
         recipeId={current.id}

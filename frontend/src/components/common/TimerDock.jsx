@@ -62,12 +62,11 @@ function notify(timer) {
 }
 
 /**
- * Floating list of kitchen timers (above the mobile tab bar and the cooking mode).
+ * Floating list of kitchen timers (above the mobile tab bar).
  * Rings with sound + vibration (+ notification if allowed) until dismissed.
  */
 export default function TimerDock() {
   const timers = useTimerStore((s) => s.timers)
-  const raised = useTimerStore((s) => s.raised)
   const { pause, resume, addTime, remove, markRinging } = useTimerStore.getState()
   const [now, setNow] = useState(() => Date.now())
   const [collapsed, setCollapsed] = useState(false)
@@ -129,11 +128,7 @@ export default function TimerDock() {
 
   return (
     <div
-      className={`fixed z-[70] right-3 left-3 sm:left-auto sm:w-80 ${
-        raised
-          ? 'bottom-[calc(6rem+env(safe-area-inset-bottom))]'
-          : 'bottom-[calc(4.25rem+env(safe-area-inset-bottom))] sm:bottom-4'
-      }`}
+      className="fixed z-[45] right-3 left-3 sm:left-auto sm:w-80 bottom-[calc(4.25rem+env(safe-area-inset-bottom))] sm:bottom-4"
       role="region"
       aria-label="Timer"
     >

@@ -142,3 +142,28 @@ body {
 .animate-spin {
   animation: spin 1s linear infinite;
 }
+
+/*
+ * iOS Safari zooms into any focused field whose text is < 16px and stays zoomed.
+ * On touch screens force at least 16px on every form control (beats text-sm etc.).
+ */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']),
+  textarea,
+  select {
+    font-size: max(16px, 1em) !important;
+  }
+}
+
+/*
+ * Phone keyboard open (a text field has focus): hide the bottom tab bar and the
+ * sticky Save bar so the field being typed isn't squeezed into a tiny strip.
+ */
+@media (max-width: 639px) {
+  body:has(input:not([type='checkbox']):not([type='radio']):not([type='file']):focus, textarea:focus, select:focus)
+    .mobile-tabbar,
+  body:has(input:not([type='checkbox']):not([type='radio']):not([type='file']):focus, textarea:focus, select:focus)
+    .form-sticky-actions {
+    display: none;
+  }
+}

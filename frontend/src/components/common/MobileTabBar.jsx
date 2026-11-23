@@ -61,7 +61,7 @@ const tabs = [
 export default function MobileTabBar() {
   return (
     <nav
-      className="sm:hidden fixed bottom-0 inset-x-0 z-30 border-t border-stone-200/80 bg-white/95 backdrop-blur-md pb-[env(safe-area-inset-bottom)]"
+      className="mobile-tabbar sm:hidden fixed bottom-0 inset-x-0 z-30 border-t border-stone-200/80 bg-white/95 backdrop-blur-md pb-[env(safe-area-inset-bottom)]"
       aria-label="Navigazione principale"
     >
       <ul className="grid grid-cols-3 max-w-lg mx-auto">

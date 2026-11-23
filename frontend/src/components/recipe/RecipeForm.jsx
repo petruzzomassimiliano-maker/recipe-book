@@ -805,12 +805,12 @@ export default function RecipeForm({
       </section>
 
       {/* Mobile sticky actions — desktop uses top bar + this as secondary */}
-      <div className="action-row sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] sm:static z-10 bg-surface/95 backdrop-blur-sm py-3 -mx-1 px-1 sm:bg-transparent sm:backdrop-blur-none sm:py-0 lg:pt-2">
+      <div className="action-row form-sticky-actions sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] sm:static z-10 bg-surface/95 backdrop-blur-sm py-3 -mx-1 px-1 sm:bg-transparent sm:backdrop-blur-none sm:py-0 lg:pt-2">
         <FormActions
           saving={saving}
           imageBusy={imageBusy}
           onCancel={onCancel ? handleCancel : null}
-          className="w-full sm:w-auto [&_button]:w-full sm:[&_button]:w-auto"
+          className="w-full sm:w-auto flex-nowrap [&_button]:flex-1 sm:[&_button]:flex-none"
         />
       </div>
     </form>

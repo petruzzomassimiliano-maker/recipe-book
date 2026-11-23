@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { readAndCompressImage, uploadRecipeImage } from '../../services/media.js'
 import { addDiaryEntry, deleteDiaryEntry } from '../../services/recipes.js'
 
@@ -50,10 +50,9 @@ function Stars({ value, onChange = null, size = 'w-5 h-5' }) {
 
 /**
  * "Diario": each time the recipe was made — date, rating, note, photo.
- * Writing needs the family PIN (`withEdit`). `openSignal` changes → open the form
- * (used by cooking mode's "Fatto!").
+ * Writing needs the family PIN (`withEdit`).
  */
-export default function DiarySection({ id, recipe, onRecipeChange, withEdit, openSignal = 0 }) {
+export default function DiarySection({ id, recipe, onRecipeChange, withEdit }) {
   const entries = recipe.diary || []
   const [formOpen, setFormOpen] = useState(false)
   const [date, setDate] = useState(today)
@@ -64,7 +63,6 @@ export default function DiarySection({ id, recipe, onRecipeChange, withEdit, ope
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const fileRef = useRef(null)
-  const sectionRef = useRef(null)
 
   const reset = () => {
     setDate(today())
@@ -74,13 +72,6 @@ export default function DiarySection({ id, recipe, onRecipeChange, withEdit, ope
     setPreview(null)
     setError(null)
   }
-
-  useEffect(() => {
-    if (!openSignal) return
-    reset()
-    setFormOpen(true)
-    setTimeout(() => sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
-  }, [openSignal])
 
   const onPhoto = async (file) => {
     if (!file) return
@@ -127,7 +118,7 @@ export default function DiarySection({ id, recipe, onRecipeChange, withEdit, ope
   const avg = entries.filter((e) => e.rating).reduce((acc, e, _, arr) => acc + e.rating / arr.length, 0)
 
   return (
-    <section ref={sectionRef} id={id} className="rounded-2xl border border-stone-200/80 bg-white p-4 sm:p-6 scroll-mt-24">
+    <section id={id} className="rounded-2xl border border-stone-200/80 bg-white p-4 sm:p-6 scroll-mt-24">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-lg font-semibold text-stone-900">Diario</h2>
