@@ -322,7 +322,7 @@ export default function RecipeForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-6 lg:space-y-8 pb-24 sm:pb-0">
       {/* Desktop sticky action bar — long-form UX: Save reachable without scrolling to end */}
-      <div className="hidden lg:flex sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-20 -mx-1 px-1 py-3 mb-2 items-center justify-between gap-4 bg-surface/95 backdrop-blur-md border-b border-stone-200/70">
+      <div className="hidden lg:flex sticky top-[calc(4rem+env(safe-area-inset-top))] z-20 -mx-1 px-1 py-3 mb-2 items-center justify-between gap-4 bg-surface/95 backdrop-blur-md border-b border-stone-200/70">
         <div className="min-w-0">
           {pageTitle ? (
             <h1 className="font-display text-2xl font-semibold text-stone-900 truncate">{pageTitle}</h1>

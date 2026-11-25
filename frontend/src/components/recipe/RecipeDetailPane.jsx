@@ -9,6 +9,8 @@ import RecipeAiChat from './RecipeAiChat.jsx'
 import StorageSection from './StorageSection.jsx'
 import DiarySection from './DiarySection.jsx'
 import FavoriteButton from './FavoriteButton.jsx'
+import { TagChip } from './RecipeBits.jsx'
+import Icon from '../ui/Icon.jsx'
 import { analyzeCookingMethods, generateStorageAdvice } from '../../services/gemini.js'
 import { getRecipe } from '../../services/recipes.js'
 import { useRecipeStore } from '../../store/recipeStore.js'
@@ -18,7 +20,7 @@ import { groupBySection } from '../../utils/recipeSections.js'
 import { shareRecipePdf } from '../../utils/recipePdf.js'
 
 const SECTION_HEADING_CLASS =
-  'text-[13px] font-semibold uppercase tracking-wide text-primary/90 pb-1.5 mb-1 border-b border-primary/15'
+  'font-body text-label-sm uppercase tracking-wider text-primary pb-1.5 mb-1 border-b border-primary/15'
 
 const difficultyLabel = {
   easy: 'Facile',
@@ -300,24 +302,25 @@ export default function RecipeDetailPane({
   ].filter(Boolean)
 
   const titleClass = compact
-    ? 'font-display text-xl font-semibold text-stone-900 leading-tight tracking-tight'
-    : 'font-display text-2xl sm:text-4xl font-semibold text-stone-900 leading-tight tracking-tight'
+    ? 'font-headline text-headline-md text-on-surface'
+    : 'font-headline text-display-sm sm:text-display-lg text-on-surface'
 
   return (
-    <div className={compact ? 'animate-fade-in' : 'max-w-4xl mx-auto px-4 sm:px-6 py-4 sm:py-8 animate-fade-in'}>
+    <div className={compact ? 'animate-fade-in' : 'max-w-[1200px] mx-auto px-4 sm:px-8 py-4 sm:py-8 animate-fade-in'}>
       {showBack && (
         <Link
           to="/recipes"
-          className="inline-flex items-center min-h-[44px] text-sm text-stone-400 active:text-stone-700"
+          className="inline-flex items-center gap-1 min-h-[44px] font-body text-label-lg text-primary hover:underline"
         >
-          ← Ricette
+          <Icon name="arrow_back" size={18} />
+          Torna alle ricette
         </Link>
       )}
 
       <header className={showBack ? 'mt-2' : ''}>
         {current.imageUrl ? (
           <div
-            className={`relative overflow-hidden rounded-2xl border border-stone-200/80 bg-stone-100 ${
+            className={`relative overflow-hidden rounded-2xl border border-outline-variant bg-surface-container-low shadow-md ${
               compact ? 'aspect-[16/9]' : 'aspect-[16/10] sm:aspect-[21/9]'
             }`}
           >
@@ -335,7 +338,7 @@ export default function RecipeDetailPane({
             <FavoriteButton recipeId={current.id} title={current.title} className="shrink-0 -mt-0.5" />
           </div>
           {metaBits.length > 0 && (
-            <p className="mt-2 text-sm text-stone-500 flex flex-wrap gap-x-2 gap-y-0.5">
+            <p className="mt-2 font-mono text-mono-md text-on-surface-variant tabular-nums flex flex-wrap gap-x-2 gap-y-0.5">
               {metaBits.map((bit, i) => (
                 <span key={bit} className="inline-flex items-center gap-2">
                   {i > 0 ? <span className="text-stone-300" aria-hidden>·</span> : null}
@@ -354,6 +357,7 @@ export default function RecipeDetailPane({
             disabled={pdfBusy}
             title="Crea un PDF della ricetta da salvare o condividere"
           >
+            <Icon name="ios_share" size={18} />
             {pdfBusy ? 'Creo PDF…' : 'PDF / Condividi'}
           </button>
           <Link
@@ -365,6 +369,7 @@ export default function RecipeDetailPane({
               if (await requestUnlock()) navigate(`/recipes/${recipeId}/edit`)
             }}
           >
+            <Icon name="edit" size={18} />
             Modifica
           </Link>
           <button
@@ -372,15 +377,17 @@ export default function RecipeDetailPane({
             className="btn-secondary !py-2.5 !px-4 text-sm"
             onClick={withEdit(() => setChatOpen(true))}
           >
+            <Icon name="auto_awesome" size={18} />
             Chiedi ad IA
           </button>
           {headerActions}
           <button
             type="button"
-            className="inline-flex items-center justify-center min-h-[44px] px-2 text-sm text-stone-400 active:text-red-600"
+            className="inline-flex items-center justify-center gap-1 min-h-[44px] px-3 rounded-full font-body text-label-lg text-on-surface-variant hover:bg-surface-container-low"
             onClick={() => setMoreOpen((v) => !v)}
             aria-expanded={moreOpen}
           >
+            <Icon name="more_horiz" size={18} />
             Altro
           </button>
         </div>
@@ -390,8 +397,9 @@ export default function RecipeDetailPane({
             <button
               type="button"
               onClick={handleDelete}
-              className="btn-secondary !py-2.5 !px-4 text-sm text-red-600 border-red-200"
+              className="btn-secondary !text-red-700 !border-red-200 hover:!bg-red-50"
             >
+              <Icon name="delete" size={18} />
               Elimina ricetta
             </button>
           </div>
@@ -404,24 +412,22 @@ export default function RecipeDetailPane({
         )}
 
         {!!meta.tags?.length && (
-          <div className="flex flex-wrap gap-1.5 mt-3">
+          <div className="flex flex-wrap gap-1.5 mt-4">
             {meta.tags.map((tag) => (
-              <span key={tag} className="px-2.5 py-0.5 rounded-lg bg-stone-100 text-xs text-stone-600">
-                {tag}
-              </span>
+              <TagChip key={tag} tag={tag} />
             ))}
           </div>
         )}
 
         {current.notes && (
-          <p className="mt-3 text-[15px] leading-relaxed text-stone-600 max-w-3xl">
+          <p className="mt-3 font-body text-body-lg text-on-surface-variant text-pretty max-w-3xl">
             {current.notes}
           </p>
         )}
       </header>
 
       <nav
-        className={`sticky z-10 py-2 mt-4 mb-3 bg-surface/95 backdrop-blur-md border-b border-stone-200/60 ${
+        className={`sticky z-10 py-2 mt-4 mb-3 bg-surface/95 backdrop-blur-md border-b border-outline-variant ${
           compact
             ? 'top-0 -mx-1 px-1'
             : 'top-[calc(3.5rem+env(safe-area-inset-top))] -mx-4 px-4 sm:static sm:mx-0 sm:px-0 sm:bg-transparent sm:backdrop-blur-none sm:border-0 sm:mt-6'
@@ -431,31 +437,31 @@ export default function RecipeDetailPane({
         <div className="flex gap-2 overflow-x-auto scrollbar-none">
           <a
             href={`#${aid('ingredienti')}`}
-            className="shrink-0 inline-flex items-center min-h-[40px] px-3.5 rounded-full bg-white border border-stone-200 text-sm font-semibold text-stone-700"
+            className="shrink-0 inline-flex items-center min-h-[40px] px-4 rounded-full bg-surface-container-lowest border border-outline-variant font-body text-label-lg text-on-surface hover:bg-surface-container-low"
           >
             Ingredienti
           </a>
           <a
             href={`#${aid('preparazione')}`}
-            className="shrink-0 inline-flex items-center min-h-[40px] px-3.5 rounded-full bg-white border border-stone-200 text-sm font-semibold text-stone-700"
+            className="shrink-0 inline-flex items-center min-h-[40px] px-4 rounded-full bg-surface-container-lowest border border-outline-variant font-body text-label-lg text-on-surface hover:bg-surface-container-low"
           >
             Preparazione
           </a>
           <a
             href={`#${aid('conservazione')}`}
-            className="shrink-0 inline-flex items-center min-h-[40px] px-3.5 rounded-full bg-white border border-stone-200 text-sm font-medium text-stone-500"
+            className="shrink-0 inline-flex items-center min-h-[40px] px-4 rounded-full bg-surface-container-lowest border border-outline-variant font-body text-label-lg text-on-surface-variant hover:bg-surface-container-low"
           >
             Conservazione
           </a>
           <a
             href={`#${aid('extra')}`}
-            className="shrink-0 inline-flex items-center min-h-[40px] px-3.5 rounded-full bg-white border border-stone-200 text-sm font-medium text-stone-500"
+            className="shrink-0 inline-flex items-center min-h-[40px] px-4 rounded-full bg-surface-container-lowest border border-outline-variant font-body text-label-lg text-on-surface-variant hover:bg-surface-container-low"
           >
             Cottura
           </a>
           <a
             href={`#${aid('diario')}`}
-            className="shrink-0 inline-flex items-center min-h-[40px] px-3.5 rounded-full bg-white border border-stone-200 text-sm font-medium text-stone-500"
+            className="shrink-0 inline-flex items-center min-h-[40px] px-4 rounded-full bg-surface-container-lowest border border-outline-variant font-body text-label-lg text-on-surface-variant hover:bg-surface-container-low"
           >
             Diario{current.diary?.length ? ` (${current.diary.length})` : ''}
           </a>
@@ -469,12 +475,12 @@ export default function RecipeDetailPane({
       >
         <section
           id={aid('ingredienti')}
-          className={`rounded-2xl border border-stone-200/80 bg-white p-4 scroll-mt-24 ${
+          className={`rounded-2xl border border-outline-variant bg-surface-container-lowest shadow-md p-4 scroll-mt-24 ${
             compact ? '' : 'sm:p-6 lg:sticky lg:top-24 sm:scroll-mt-24'
           }`}
         >
           <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-            <h2 className="text-lg font-semibold text-stone-900">Ingredienti</h2>
+            <h2 className="font-headline text-headline-md text-on-surface">Ingredienti</h2>
             <div className="inline-flex items-center rounded-xl border border-stone-200 bg-stone-50 overflow-hidden">
               <button
                 type="button"
@@ -591,11 +597,11 @@ export default function RecipeDetailPane({
 
         <section
           id={aid('preparazione')}
-          className={`rounded-2xl border border-stone-200/80 bg-white p-4 scroll-mt-24 ${
+          className={`rounded-2xl border border-outline-variant bg-surface-container-lowest shadow-md p-4 scroll-mt-24 ${
             compact ? '' : 'sm:p-6'
           }`}
         >
-          <h2 className="text-lg font-semibold text-stone-900 mb-4">Preparazione</h2>
+          <h2 className="font-headline text-headline-md text-on-surface mb-4">Preparazione</h2>
           {displaySteps.length ? (
             <div className="space-y-7">
               {groupBySection(displaySteps).map((group, gi) => (
@@ -606,7 +612,7 @@ export default function RecipeDetailPane({
                   <ol className="space-y-5">
                     {group.entries.map(({ item: step }) => (
                       <li key={step.id || step.order} className="flex gap-3.5">
-                        <span className="shrink-0 w-9 h-9 rounded-full bg-primary/10 text-primary text-sm font-semibold flex items-center justify-center">
+                        <span className="shrink-0 w-9 h-9 rounded-full bg-primary-tint text-primary font-mono text-mono-md flex items-center justify-center">
                           {step.order}
                         </span>
                         <div className="pt-1 min-w-0 flex-1 text-[16px] sm:text-[15px] leading-relaxed">

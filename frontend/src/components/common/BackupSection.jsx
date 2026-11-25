@@ -3,6 +3,7 @@ import { useAuthStore, useEditAccess } from '../../store/authStore.js'
 import { useFavoritesStore } from '../../store/favoritesStore.js'
 import { useRecipeStore } from '../../store/recipeStore.js'
 import { listRecipes } from '../../services/recipes.js'
+import Icon from '../ui/Icon.jsx'
 import { createBackup, downloadBlob, readBackupFile, restoreBackup } from '../../utils/backup.js'
 
 function formatDateTime(iso) {
@@ -107,36 +108,50 @@ export default function BackupSection() {
   }
 
   return (
-    <section className="card p-4 sm:p-6 space-y-3">
-      <h2 className="section-title">Backup</h2>
-      <p className="text-sm text-stone-500 leading-relaxed">
-        Scarica tutte le ricette (con diario e, se vuoi, le foto) in un unico file. Se un giorno si perde
-        qualcosa, da qui puoi ripristinarle.
-      </p>
+    <div className="card p-4 sm:p-6 flex flex-col gap-6">
+      <div className="flex items-start gap-4 max-w-xl">
+        <span className="icon-badge bg-tertiary-container text-tertiary-on-container mt-0.5">
+          <Icon name="cloud_download" />
+        </span>
+        <div className="flex flex-col gap-1">
+          <h3 className="font-headline text-headline-md text-on-surface">Backup e ripristino</h3>
+          <p className="font-body text-body-md text-on-surface-variant text-pretty">
+            Scarica tutte le ricette (con diario e, se vuoi, le foto) in un unico file. Se un giorno si perde
+            qualcosa, da qui puoi ripristinarle.
+          </p>
+        </div>
+      </div>
 
-      <label className="flex items-center gap-2 text-sm text-stone-700 min-h-[40px]">
-        <input type="checkbox" checked={includePhotos} onChange={(e) => setIncludePhotos(e.target.checked)} disabled={busy} />
-        Includi le foto (file più grande)
-      </label>
-
-      <div className="flex flex-wrap gap-2">
-        <button type="button" className="btn-primary !py-2.5 !px-4 text-sm" onClick={doBackup} disabled={busy}>
-          Scarica backup
-        </button>
-        <button type="button" className="btn-secondary !py-2.5 !px-4 text-sm" onClick={() => fileRef.current?.click()} disabled={busy}>
-          Ripristina da file…
-        </button>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="application/json,.json"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0]
-            e.target.value = ''
-            pickFile(file)
-          }}
-        />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 border-t border-outline-variant">
+        <label className="flex items-center gap-2 cursor-pointer min-h-[40px] font-body text-body-md text-on-surface">
+          <input
+            type="checkbox"
+            className="w-4 h-4 accent-primary"
+            checked={includePhotos}
+            onChange={(e) => setIncludePhotos(e.target.checked)}
+            disabled={busy}
+          />
+          Includi le foto (file più grande)
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" className="btn-primary" onClick={doBackup} disabled={busy}>
+            Scarica backup
+          </button>
+          <button type="button" className="btn-secondary" onClick={() => fileRef.current?.click()} disabled={busy}>
+            Ripristina da file…
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              pickFile(file)
+            }}
+          />
+        </div>
       </div>
 
       {busy && progress && (
@@ -179,6 +194,6 @@ export default function BackupSection() {
           <p className="text-xs text-stone-500">Serve il PIN di famiglia. Le ricette create dopo il backup non vengono toccate.</p>
         </div>
       )}
-    </section>
+    </div>
   )
 }

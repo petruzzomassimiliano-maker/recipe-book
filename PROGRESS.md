@@ -22,7 +22,7 @@
 | **Calorie / nutrizione** | — | 🗑️ Rimossa in «Sessione 19» (pannello, calcolo automatico, kcal in elenco) |
 | **YouTube transcript parser** | «Sessione 5» + «17» | ✅ Sottotitoli (web → Android) + **Gemini guarda il video** se mancano |
 | **Shopping list feature** | «Sessione 3» + «12» | 🗑️ Rimossa in «Sessione 19» |
-| **Material Design 3 UI** | «Sessione X» | ⏳ Pending (mobile HIG/Material touch già applicati) |
+| **Grafica Stitch (redesign)** | «Sessione 21» | ✅ Palette terracotta/salvia, Fraunces + Geologica, icone Material Symbols; Home bento, Ricette (Dettaglio/Caselle), Impostazioni a righe |
 | **Multi-user + RBAC** | «Sessione 7» + «10» | 🗑️ Rimosso in «Sessione 19» (niente account, PIN di famiglia) |
 | **PWA + offline sync** | «Sessione 6» + «8» | ✅ Build + SW verificati (`dist/sw.js`) |
 | **Foto → Gemini Vision** | «Sessione 8» | ✅ Import da foto |
@@ -1091,6 +1091,16 @@ Parser `parseIngredientLine` (`worker/src/lib/scrapers/_base.js`), usato da JSON
 - [ ] Il parser euristico (siti senza JSON-LD) non usa ancora `htmlListGroups`
 
 ---
+
+## Sessione 21 — 2026-11-25 — Grafica dal progetto Stitch «Recipe Book Redesign»
+
+- Fonte: progetto Stitch `5513621119285765258` (schermate Home, Ricette caselle, Ricette dettaglio, Impostazioni).
+- **Tema globale** (`tailwind.config.js`): token Stitch (`primary` #A6331B, `secondary` #45664E, `surface-*`, `outline-*`, scala testi `display-lg`…`label-sm`); `stone` e `teal` rimappati sui neutri caldi / verde salvia, così le pagine non ridisegnate (form, import, Cosa cucino, dettaglio) prendono lo stesso stile. Font Fraunces + Geologica + Source Code Pro; icone Material Symbols (`components/ui/Icon.jsx`). Bottoni a pillola, card con ombra morbida (`index.css`).
+- **Navbar** a pillola + lucchetto; **tab bar** mobile con icone.
+- **Home**: in evidenza (16:9) + «Inizia da qui» 2×2 + «Preferite di casa»; ricerca → `/recipes`.
+- **Ricette**: ricerca e filtri lato client sull’indice; chip «Cosa cucino» con gli ingredienti più usati (`rankByIngredients`); due viste desktop salvate per dispositivo (`authStore.recipesView`): *Dettaglio* (colonna con ricerca/dispensa/elenco + anteprima o caselle) e *Caselle* (griglia + anteprima in linea `?anteprima=<id>`). Telefono: sempre caselle, tocco → scheda completa.
+- **Impostazioni**: rail categorie + «Stato rapido», righe orizzontali, nuova riga «Visualizzazione ricette».
+- Anteprima locale con dati veri: `API_PROXY_TARGET=<WORKER_URL> npx vite` (proxy `/api` configurabile in `vite.config.js`).
 
 ## Biblioteca codice critico (riuso in altri progetti)
 

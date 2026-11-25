@@ -109,7 +109,7 @@ export default function RecipeDetail() {
   }
 
   return (
-    <main className="h-[calc(100dvh-3.5rem-env(safe-area-inset-top))] max-w-[100vw] animate-fade-in">
+    <main className="h-[calc(100dvh-4rem-env(safe-area-inset-top))] max-w-[100vw] animate-fade-in">
       <div className="grid grid-cols-2 h-full divide-x divide-stone-200/80">
         <section className="min-w-0 h-full overflow-y-auto overscroll-contain px-4 py-4 lg:px-5">
           <RecipeDetailPane

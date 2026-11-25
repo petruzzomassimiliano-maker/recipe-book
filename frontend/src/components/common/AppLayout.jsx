@@ -41,7 +41,7 @@ export default function AppLayout() {
       <KeepAwakeController />
       <Navbar />
       <OfflineBanner usingCache={offlineFallback} />
-      <div className="flex-1 pb-[calc(3.75rem+env(safe-area-inset-bottom))] sm:pb-0">
+      <div className="flex-1 pb-[calc(4rem+env(safe-area-inset-bottom))] sm:pb-0">
         <Outlet />
       </div>
       <MobileTabBar />

@@ -1,39 +1,36 @@
 import { NavLink } from 'react-router-dom'
 import { useAuthStore, useEditAccess } from '../../store/authStore.js'
+import Icon from '../ui/Icon.jsx'
 
 const linkClass = ({ isActive }) =>
-  `inline-flex items-center min-h-[44px] text-sm font-medium px-3 py-2 rounded-lg transition-colors ${
+  `inline-flex items-center px-4 py-1 min-h-[36px] rounded-full font-body text-label-lg transition-colors duration-state-change ${
     isActive
-      ? 'text-primary bg-primary/10'
-      : 'text-stone-500 hover:text-stone-900 hover:bg-stone-100/80'
+      ? 'bg-primary-tint text-primary-on-tint'
+      : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container'
   }`
 
 export default function Navbar() {
   const familyAppName = useAuthStore((s) => s.familyAppName)
   const { canEdit, requestUnlock, lock } = useEditAccess()
-  const brand = familyAppName || 'Recipe Book'
+  const brand = familyAppName || 'Ricettario'
 
   return (
-    <header className="bg-white/75 backdrop-blur-md border-b border-stone-200/70 sticky top-0 z-20 pt-[env(safe-area-inset-top)]">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 min-h-[56px] py-2 flex items-center justify-between gap-3">
-        <NavLink to="/" className="flex items-center gap-2.5 group min-w-0 min-h-[44px]">
-          <span className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary-dark text-white shadow-sm shrink-0">
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <path
-                d="M4 14c0-4 3-7 8-7s8 3 8 7v1H4v-1Z"
-                stroke="currentColor"
-                strokeWidth="1.75"
-                strokeLinejoin="round"
-              />
-              <path d="M8 8V5M12 7V3M16 8V5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
-            </svg>
+    <header className="sticky top-0 z-30 bg-surface-container-lowest border-b border-outline-variant pt-[env(safe-area-inset-top)]">
+      <div className="max-w-[1200px] mx-auto px-4 sm:px-8 h-14 sm:h-16 flex items-center justify-between gap-4">
+        <NavLink
+          to="/"
+          className="flex items-center gap-2 min-w-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <span className="w-9 h-9 rounded-xl bg-primary text-white flex items-center justify-center shrink-0">
+            <Icon name="skillet" size={20} />
           </span>
-          <span className="font-display text-lg font-semibold text-stone-900 tracking-tight truncate">
-            {brand}
-          </span>
+          <span className="font-headline text-title-lg text-on-surface truncate">{brand}</span>
         </NavLink>
 
-        <nav className="hidden sm:flex items-center gap-0.5" aria-label="Navigazione desktop">
+        <nav
+          aria-label="Navigazione principale"
+          className="hidden sm:flex items-center gap-1 bg-surface-container-low p-1 rounded-full border border-outline-variant"
+        >
           <NavLink to="/" end className={linkClass}>
             Home
           </NavLink>
@@ -48,22 +45,18 @@ export default function Navbar() {
         <button
           type="button"
           onClick={canEdit ? lock : requestUnlock}
-          className={`inline-flex items-center gap-1.5 shrink-0 min-h-[44px] text-sm px-3 rounded-lg transition-colors ${
+          className={`inline-flex items-center gap-1.5 shrink-0 min-h-[40px] px-4 rounded-full border font-body text-label-lg transition-colors duration-state-change focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
             canEdit
-              ? 'text-teal-700 bg-teal-50 hover:bg-teal-100'
-              : 'text-stone-500 hover:text-stone-900 hover:bg-stone-100'
+              ? 'bg-secondary-container text-secondary-on-container border-secondary/30 hover:bg-teal-200'
+              : 'bg-surface-container-lowest text-on-surface border-outline-variant hover:bg-surface-container-low'
           }`}
           title={canEdit ? 'Modifiche sbloccate — tocca per bloccare' : 'Inserisci il PIN per modificare'}
         >
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" strokeWidth="1.75" />
-            <path
-              d={canEdit ? 'M8 11V8a4 4 0 0 1 7.5-2' : 'M8 11V8a4 4 0 1 1 8 0v3'}
-              stroke="currentColor"
-              strokeWidth="1.75"
-              strokeLinecap="round"
-            />
-          </svg>
+          <Icon
+            name={canEdit ? 'lock_open' : 'lock'}
+            size={18}
+            className={canEdit ? '' : 'text-on-surface-variant'}
+          />
           <span>{canEdit ? 'Blocca' : 'Modifica'}</span>
         </button>
       </div>

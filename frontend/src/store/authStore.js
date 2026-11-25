@@ -13,6 +13,8 @@ export const useAuthStore = create(
       editToken: null,
       familyAppName: 'Recipe Book',
       featuredMode: 'random',
+      /** Catalog layout on this device: 'dettaglio' (list + preview) or 'caselle' (tiles). */
+      recipesView: 'dettaglio',
       unlockOpen: false,
 
       setEditToken: (editToken) => {
@@ -24,6 +26,7 @@ export const useAuthStore = create(
       lock: () => set({ editToken: null }),
       setFamilyAppName: (familyAppName) => set({ familyAppName: familyAppName || 'Recipe Book' }),
       setFeaturedMode: (featuredMode) => set({ featuredMode }),
+      setRecipesView: (recipesView) => set({ recipesView }),
 
       /** Opens the PIN dialog; resolves true once unlocked, false if dismissed. */
       requestUnlock: () => {
@@ -45,7 +48,8 @@ export const useAuthStore = create(
       partialize: (state) => ({
         editToken: state.editToken,
         familyAppName: state.familyAppName,
-        featuredMode: state.featuredMode
+        featuredMode: state.featuredMode,
+        recipesView: state.recipesView
       })
     }
   )

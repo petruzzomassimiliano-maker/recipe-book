@@ -1,4 +1,4 @@
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import RecipeForm from '../components/recipe/RecipeForm.jsx'
 import { fetchRecipeFromUrl, isYoutubeUrl, parseYoutubeRecipe } from '../services/scraper.js'
 import { extractRecipeFromPhoto } from '../services/gemini.js'
@@ -59,8 +59,16 @@ function isPdf(file) {
 
 export default function ImportRecipe() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { addRecipe } = useRecipes()
   const cameraRef = useRef(null)
+
+  useEffect(() => {
+    // "Importa da foto/pdf" from the catalog lands on the photo card
+    if (location.hash === '#foto') {
+      requestAnimationFrame(() => document.getElementById('foto')?.scrollIntoView({ block: 'start' }))
+    }
+  }, [location.hash])
   const fileRef = useRef(null)
   const {
     value: page,
@@ -305,7 +313,7 @@ export default function ImportRecipe() {
             )}
           </form>
 
-          <div className="card p-5 sm:p-6 mb-8 space-y-3 max-w-3xl">
+          <div id="foto" className="card p-5 sm:p-6 mb-8 space-y-3 max-w-3xl scroll-mt-24">
             <h2 className="text-sm font-semibold text-stone-800">Oppure da foto o PDF</h2>
             <p className="text-xs text-stone-500">
               Scatta una foto della ricetta (libro, quaderno, schermo) o scegli un’immagine / un PDF

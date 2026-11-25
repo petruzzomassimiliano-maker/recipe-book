@@ -3,17 +3,14 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore.js'
 import { useRecipes } from '../hooks/useRecipes.js'
 import { useFavoritesStore } from '../store/favoritesStore.js'
-
-const difficultyLabel = {
-  easy: 'Facile',
-  medium: 'Media',
-  hard: 'Difficile'
-}
+import FavoriteButton from '../components/recipe/FavoriteButton.jsx'
+import { RecipeCover, recipeMeta } from '../components/recipe/RecipeBits.jsx'
+import Icon from '../components/ui/Icon.jsx'
 
 const FEATURED_LABEL = {
-  random: 'Ricetta a caso',
+  random: 'Ricetta del giorno',
   latest: 'Ultima aggiornata',
-  oldest: 'Più vecchia'
+  oldest: 'Dal primo giorno'
 }
 
 function pickFeatured(recipes, mode, randomId) {
@@ -38,12 +35,44 @@ function pickFeatured(recipes, mode, randomId) {
   return recipes[Math.floor(Math.random() * recipes.length)]
 }
 
+const quickActions = [
+  {
+    label: 'URL / YouTube',
+    desc: 'Importa da link',
+    to: '/recipes/import',
+    icon: 'link',
+    tone: 'bg-tertiary-container text-tertiary-on-container'
+  },
+  {
+    label: 'Manuale',
+    desc: 'Scrivi ricetta',
+    to: '/recipes/new',
+    icon: 'edit_note',
+    tone: 'bg-primary-tint text-primary-on-tint'
+  },
+  {
+    label: 'Cosa cucino?',
+    desc: 'Con la dispensa',
+    to: '/cosa-cucino',
+    icon: 'kitchen',
+    tone: 'bg-amber-tint text-amber-on-tint'
+  },
+  {
+    label: 'Tutte le ricette',
+    desc: 'Sfoglia catalogo',
+    to: '/recipes',
+    icon: 'grid_view',
+    tone: 'bg-secondary-container text-secondary-on-container'
+  }
+]
+
 export default function Home() {
   const familyAppName = useAuthStore((s) => s.familyAppName)
   const featuredMode = useAuthStore((s) => s.featuredMode) || 'random'
   const navigate = useNavigate()
-  const { recipes, loadRecipes, isLoading } = useRecipes()
+  const { recipes, loadRecipes, isLoading, setSearchFilter } = useRecipes()
   const [randomId, setRandomId] = useState(null)
+  const [query, setQuery] = useState('')
   const favoriteIds = useFavoritesStore((s) => s.ids)
   const favorites = useMemo(() => {
     const byId = new Map((recipes || []).map((r) => [r.id, r]))
@@ -73,168 +102,199 @@ export default function Home() {
     [recipes, featuredMode, randomId]
   )
 
-  const quickActions = [
-    {
-      label: 'URL / YouTube',
-      desc: 'Importa',
-      to: '/recipes/import',
-      accent: 'bg-teal-50 text-teal-800 border-teal-100'
-    },
-    {
-      label: 'Manuale',
-      desc: 'Scrivi',
-      to: '/recipes/new',
-      accent: 'bg-orange-50 text-orange-900 border-orange-100'
-    },
-    {
-      label: 'Cosa cucino?',
-      desc: 'Con quello che ho',
-      to: '/cosa-cucino',
-      accent: 'bg-amber-50 text-amber-900 border-amber-100'
-    },
-    {
-      label: 'Tutte le ricette',
-      desc: 'Sfoglia',
-      to: '/recipes',
-      accent: 'bg-stone-50 text-stone-800 border-stone-200'
-    }
-  ]
+  const search = (e) => {
+    e.preventDefault()
+    setSearchFilter(query.trim())
+    navigate('/recipes')
+  }
+
+  const featuredIngredients = (featured?.ingredientNames || []).slice(0, 6)
 
   return (
-    <main className="max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-10 animate-fade-in">
-      <section className="mb-5 sm:mb-8">
-        <h1 className="font-display text-2xl sm:text-4xl font-semibold text-stone-900 tracking-tight leading-snug">
-          {familyAppName || 'Recipe Book'}
-        </h1>
-        <p className="mt-1 text-sm sm:text-base text-stone-500">Cosa cuciniamo oggi?</p>
-      </section>
-
-      <section className="mb-7 sm:mb-10">
-        <div className="flex items-end justify-between mb-3 gap-3">
-          <h2 className="section-title !text-lg sm:!text-xl">In evidenza</h2>
-          <Link
-            to="/recipes"
-            className="inline-flex items-center min-h-[44px] text-sm text-primary font-semibold"
-          >
-            Vedi tutte
-          </Link>
+    <main className="max-w-[1200px] mx-auto px-4 sm:px-8 py-6 sm:py-8 flex flex-col gap-6 sm:gap-8 animate-fade-in">
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 md:gap-6">
+        <div className="flex flex-col gap-1">
+          <h1 className="page-title">{familyAppName || 'Ricettario'}</h1>
+          <p className="font-body text-body-lg text-on-surface-variant">Cosa cuciniamo oggi?</p>
         </div>
 
-        {isLoading && !featured ? (
-          <p className="text-stone-400">Caricamento…</p>
-        ) : !featured ? (
-          <div className="rounded-2xl bg-white border border-dashed border-stone-200 p-8 text-center">
-            <h3 className="font-display text-xl font-semibold text-stone-900 mb-2">
-              Nessuna ricetta ancora
-            </h3>
-            <p className="text-stone-500 text-sm max-w-sm mx-auto leading-relaxed mb-4">
-              Aggiungi la prima ricetta o importane una da URL.
-            </p>
-            <button
-              type="button"
-              className="btn-primary !py-2.5 !px-5"
-              onClick={() => navigate('/recipes/import')}
-            >
-              Importa
-            </button>
-          </div>
-        ) : (
-          <Link
-            to={`/recipes/${featured.id}`}
-            className="group block overflow-hidden rounded-2xl border border-stone-200/80 bg-white shadow-sm"
-          >
-            {/* Image only — title lives below so it never covers the photo */}
-            <div className="relative aspect-[16/10] sm:aspect-[21/9] bg-stone-100 overflow-hidden">
-              {featured.imageUrl ? (
-                <img
-                  src={featured.imageUrl}
-                  alt=""
-                  className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"
-                />
-              ) : (
-                <div
-                  aria-hidden
-                  className="absolute inset-0 bg-gradient-to-br from-primary/80 via-stone-200 to-teal-100 flex items-center justify-center"
-                >
-                  <span className="font-display text-5xl text-white/90">
-                    {featured.title?.[0] || 'R'}
-                  </span>
-                </div>
-              )}
-              <span className="absolute top-3 left-3 rounded-lg bg-black/45 backdrop-blur-sm text-white text-[11px] font-semibold uppercase tracking-wide px-2.5 py-1">
-                {FEATURED_LABEL[featuredMode] || FEATURED_LABEL.random}
-              </span>
-            </div>
+        <form onSubmit={search} role="search" className="relative flex items-center w-full md:w-80">
+          <label htmlFor="home-search" className="sr-only">
+            Cerca una ricetta
+          </label>
+          <Icon name="search" className="absolute left-4 text-outline pointer-events-none" />
+          <input
+            id="home-search"
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Cerca ricetta o ingrediente…"
+            enterKeyHint="search"
+            className="w-full min-h-[44px] rounded-full border border-outline-variant bg-surface-container-lowest pl-11 pr-4 py-2 font-body text-body-md text-on-surface placeholder:text-outline shadow-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+          />
+        </form>
+      </header>
 
-            <div className="p-4 sm:p-5">
-              <h3 className="font-display text-xl sm:text-2xl font-semibold text-stone-900 tracking-tight leading-snug line-clamp-2">
-                {featured.title}
-              </h3>
-              <p className="mt-1.5 text-sm text-stone-500 flex flex-wrap gap-x-2 gap-y-0.5">
-                {featured.servings ? <span>{featured.servings} porzioni</span> : null}
-                {featured.servings && featured.difficulty ? (
-                  <span className="text-stone-300">·</span>
-                ) : null}
-                {featured.difficulty ? (
-                  <span>{difficultyLabel[featured.difficulty] || featured.difficulty}</span>
-                ) : null}
-              </p>
-              <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-primary">
-                Apri ricetta
-                <span aria-hidden>→</span>
-              </span>
-            </div>
-          </Link>
-        )}
-      </section>
-
-      {favorites.length > 0 && (
-        <section className="mb-7 sm:mb-10">
-          <div className="flex items-end justify-between mb-3 gap-3">
-            <h2 className="section-title !text-lg sm:!text-xl">
-              <span className="text-amber-500" aria-hidden>★</span> Preferite
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+        {/* In evidenza */}
+        <section aria-labelledby="featured-heading" className="lg:col-span-7 flex flex-col gap-4">
+          <div className="flex items-center justify-between gap-4">
+            <h2 id="featured-heading" className="section-title">
+              In evidenza
             </h2>
-            <Link to="/recipes?preferite=1" className="inline-flex items-center min-h-[44px] text-sm text-primary font-semibold">
+            <Link
+              to="/recipes"
+              className="inline-flex items-center gap-1 min-h-[44px] text-primary font-body text-label-lg hover:underline"
+            >
               Vedi tutte
+              <Icon name="arrow_forward" size={18} />
             </Link>
           </div>
-          <ul className="flex gap-3 overflow-x-auto scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0 pb-1">
-            {favorites.slice(0, 12).map((r) => (
-              <li key={r.id} className="shrink-0 w-36 sm:w-44">
-                <Link to={`/recipes/${r.id}`} className="block rounded-2xl border border-stone-200/80 bg-white overflow-hidden active:bg-stone-50">
-                  {r.imageUrl ? (
-                    <img src={r.imageUrl} alt="" loading="lazy" className="w-full aspect-[4/3] object-cover bg-stone-100" />
-                  ) : (
-                    <div className="w-full aspect-[4/3] bg-gradient-to-br from-orange-50 via-stone-50 to-teal-50 flex items-center justify-center">
-                      <span className="font-display text-2xl text-stone-300">{r.title?.[0] || 'R'}</span>
-                    </div>
-                  )}
-                  <p className="px-2.5 py-2 text-sm font-semibold text-stone-800 leading-snug line-clamp-2 min-h-[3.25rem]">
-                    {r.title}
-                  </p>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
 
-      <section>
-        <h2 className="section-title !text-lg sm:!text-xl mb-3">Inizia da qui</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-          {quickActions.map((action) => (
-            <button
-              key={action.label}
-              type="button"
-              onClick={() => navigate(action.to)}
-              className={`text-center sm:text-left rounded-2xl border px-2.5 py-3.5 sm:px-5 sm:py-4 min-h-[72px] transition-all active:scale-[0.98] ${action.accent}`}
-            >
-              <div className="font-semibold text-xs sm:text-[15px] leading-tight">{action.label}</div>
-              <div className="hidden sm:block text-sm opacity-70 mt-1">{action.desc}</div>
-            </button>
-          ))}
-        </div>
-      </section>
+          {isLoading && !featured ? (
+            <div className="card !shadow-none overflow-hidden" aria-busy="true">
+              <div className="aspect-[16/9] bg-surface-container-low animate-pulse" />
+              <div className="p-6 sm:p-8 space-y-3">
+                <div className="h-4 w-1/3 rounded bg-surface-container-low" />
+                <div className="h-7 w-2/3 rounded bg-surface-container-low" />
+              </div>
+            </div>
+          ) : !featured ? (
+            <div className="rounded-2xl bg-surface-container-lowest border border-dashed border-outline-variant p-8 text-center">
+              <h3 className="font-display text-headline-md text-on-surface mb-2">Nessuna ricetta ancora</h3>
+              <p className="font-body text-body-md text-on-surface-variant max-w-sm mx-auto mb-4">
+                Aggiungi la prima ricetta o importane una da URL.
+              </p>
+              <button type="button" className="btn-primary" onClick={() => navigate('/recipes/import')}>
+                <Icon name="link" size={18} />
+                Importa
+              </button>
+            </div>
+          ) : (
+            <article className="card overflow-hidden flex flex-col">
+              <Link to={`/recipes/${featured.id}`} className="block group" tabIndex={-1} aria-hidden>
+                <RecipeCover
+                  recipe={featured}
+                  className="aspect-[16/10] sm:aspect-[16/9]"
+                  imgClassName="transition-transform duration-surface-enter group-hover:scale-[1.02]"
+                  letterClassName="text-6xl"
+                />
+              </Link>
+              <div className="p-5 sm:p-8 flex flex-col gap-4">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-secondary-container text-secondary-on-container font-body text-label-sm">
+                      <Icon name="auto_awesome" size={14} />
+                      {FEATURED_LABEL[featuredMode] || FEATURED_LABEL.random}
+                    </span>
+                    {featured.tags?.[0] ? <span className="chip">{featured.tags[0]}</span> : null}
+                  </div>
+                  <span className="font-mono text-mono-md text-on-surface-variant tabular-nums">
+                    {recipeMeta(featured)}
+                  </span>
+                </div>
+
+                <h3 className="font-headline text-headline-md sm:text-headline-lg text-on-surface">
+                  <Link to={`/recipes/${featured.id}`} className="hover:text-primary transition-colors">
+                    {featured.title}
+                  </Link>
+                </h3>
+                {featuredIngredients.length ? (
+                  <p className="font-body text-body-md sm:text-body-lg text-on-surface-variant text-pretty line-clamp-2">
+                    Con {featuredIngredients.join(', ').toLowerCase()}
+                    {featured.ingredientNames.length > featuredIngredients.length ? '…' : '.'}
+                  </p>
+                ) : null}
+
+                <footer className="pt-4 border-t border-outline-variant flex items-center gap-2">
+                  <Link to={`/recipes/${featured.id}`} className="btn-primary !px-6">
+                    <Icon name="skillet" size={18} />
+                    Inizia a cucinare
+                  </Link>
+                  <FavoriteButton recipeId={featured.id} title={featured.title} />
+                </footer>
+              </div>
+            </article>
+          )}
+        </section>
+
+        <aside className="lg:col-span-5 flex flex-col gap-6 lg:gap-8">
+          {/* Inizia da qui */}
+          <section aria-labelledby="start-here-heading" className="flex flex-col gap-4">
+            <h2 id="start-here-heading" className="section-title">
+              Inizia da qui
+            </h2>
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 items-stretch">
+              {quickActions.map((a) => (
+                <Link
+                  key={a.label}
+                  to={a.to}
+                  className="group card p-4 flex flex-col justify-between gap-4 min-h-[120px] hover:border-outline"
+                >
+                  <span className={`icon-badge ${a.tone}`}>
+                    <Icon name={a.icon} size={20} />
+                  </span>
+                  <span className="flex flex-col gap-1">
+                    <span className="font-headline text-title-md text-on-surface group-hover:text-primary transition-colors duration-state-change">
+                      {a.label}
+                    </span>
+                    <span className="font-body text-label-sm text-on-surface-variant">{a.desc}</span>
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </section>
+
+          {/* Preferite */}
+          <section aria-labelledby="favorites-heading" className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <h2 id="favorites-heading" className="font-headline text-title-lg text-on-surface flex items-center gap-1">
+                <Icon name="star" size={18} filled className="text-primary" />
+                Preferite di casa
+              </h2>
+              {favorites.length > 0 && (
+                <Link
+                  to="/recipes?preferite=1"
+                  className="inline-flex items-center min-h-[40px] text-primary font-body text-label-sm hover:underline"
+                >
+                  Tutte ({favorites.length})
+                </Link>
+              )}
+            </div>
+
+            {favorites.length ? (
+              <ul className="flex flex-col gap-2">
+                {favorites.slice(0, 4).map((r) => (
+                  <li key={r.id}>
+                    <Link
+                      to={`/recipes/${r.id}`}
+                      className="group card p-2 flex items-center gap-4 hover:border-outline"
+                    >
+                      <RecipeCover recipe={r} className="w-14 h-14 rounded-xl" letterClassName="text-xl" />
+                      <span className="flex-1 min-w-0 flex flex-col gap-1">
+                        <span className="font-body text-title-md text-on-surface truncate">{r.title}</span>
+                        <span className="font-body text-label-sm text-on-surface-variant tabular-nums">
+                          {recipeMeta(r, { difficulty: false })}
+                        </span>
+                      </span>
+                      <Icon
+                        name="chevron_right"
+                        size={18}
+                        className="text-on-surface-variant group-hover:text-primary mr-2"
+                      />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="rounded-2xl border border-dashed border-outline-variant bg-surface-container-lowest px-4 py-3 font-body text-body-md text-on-surface-variant">
+                Tocca la <Icon name="star" size={16} className="text-primary" /> su una ricetta per
+                ritrovarla qui (vale su questo dispositivo).
+              </p>
+            )}
+          </section>
+        </aside>
+      </div>
     </main>
   )
 }

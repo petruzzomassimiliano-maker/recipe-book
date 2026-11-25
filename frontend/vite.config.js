@@ -12,8 +12,8 @@ export default defineConfig({
         name: 'Recipe Book',
         short_name: 'Ricette',
         description: 'Il tuo ricettario di famiglia intelligente',
-        theme_color: '#FF6B6B',
-        background_color: '#F7F5F2',
+        theme_color: '#FAF8F5',
+        background_color: '#FAF8F5',
         display: 'standalone',
         orientation: 'portrait',
         scope: '/',
@@ -94,7 +94,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8787',
+        target: process.env.API_PROXY_TARGET || 'http://localhost:8787',
         changeOrigin: true,
         secure: false
       }
@@ -104,7 +104,7 @@ export default defineConfig({
     port: 4173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8787',
+        target: process.env.API_PROXY_TARGET || 'http://localhost:8787',
         changeOrigin: true,
         secure: false
       }
