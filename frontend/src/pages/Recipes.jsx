@@ -362,6 +362,10 @@ export default function Recipes() {
   const onlyFavorites = params.get('preferite') === '1'
   const previewId = params.get('anteprima')
   const favoriteIds = useFavoritesStore((s) => s.ids)
+  const favoriteRecipes = useMemo(() => {
+    const byId = new Map((recipes || []).map((r) => [r.id, r]))
+    return favoriteIds.map((id) => byId.get(id)).filter(Boolean)
+  }, [recipes, favoriteIds])
 
   const chips = useMemo(() => {
     const top = topIngredients(recipes)
@@ -547,19 +551,24 @@ export default function Recipes() {
             </div>
 
             <div className="flex flex-col gap-2 pt-4 border-t border-outline-variant min-h-0">
-              <h2 className="font-body text-title-md text-on-surface">Elenco di tutte le ricette</h2>
+              <div className="flex items-center gap-1">
+                <Icon name="star" size={18} filled className="text-primary" />
+                <h2 className="font-body text-title-md text-on-surface">Le tue preferite</h2>
+                {favoriteRecipes.length ? (
+                  <span className="ml-auto font-body text-label-sm text-on-surface-variant tabular-nums">
+                    {favoriteRecipes.length}
+                  </span>
+                ) : null}
+              </div>
               <div className="flex flex-col gap-2 overflow-y-auto -mr-3 pr-3 min-h-[120px]">
-                {shown.map((r) => (
-                  <RecipeRow
-                    key={r.id}
-                    recipe={r}
-                    active={r.id === previewId}
-                    onOpen={openRecipe}
-                    matched={matchedById.get(r.id)}
-                  />
+                {favoriteRecipes.map((r) => (
+                  <RecipeRow key={r.id} recipe={r} active={r.id === previewId} onOpen={openRecipe} />
                 ))}
-                {!shown.length ? (
-                  <p className="font-body text-body-md text-on-surface-variant py-2">{emptyMessage}</p>
+                {!favoriteRecipes.length ? (
+                  <p className="font-body text-body-md text-on-surface-variant py-2">
+                    Nessuna preferita ancora: tocca la <Icon name="star" size={16} className="text-primary" /> su
+                    una ricetta per averla sempre qui (vale su questo dispositivo).
+                  </p>
                 ) : null}
               </div>
             </div>
