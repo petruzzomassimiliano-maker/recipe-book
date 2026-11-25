@@ -5,6 +5,8 @@ import { useIsDesktopSplit, useRecipeById } from '../hooks/useRecipeById.js'
 import { useFavoritesStore } from '../store/favoritesStore.js'
 import { useAuthStore } from '../store/authStore.js'
 import { fold, rankByIngredients, tokens } from '../utils/ingredientMatch.js'
+import { groupBySection } from '../utils/recipeSections.js'
+import { formatScaledQty } from '../utils/scaleIngredients.js'
 import FavoriteButton from '../components/recipe/FavoriteButton.jsx'
 import { RecipeCover, TagChip, recipeMeta, formatMinutes } from '../components/recipe/RecipeBits.jsx'
 import Icon from '../components/ui/Icon.jsx'
@@ -16,6 +18,9 @@ const SKIP_CHIPS = new Set(
   )
 )
 const MAX_CHIPS = 10
+const MAX_PREVIEW_STEPS = 6
+const SECTION_HEADING =
+  'font-body text-label-sm uppercase tracking-wider text-primary pb-1 border-b border-primary/15'
 
 /** Most used ingredients across the book → quick "cosa cucino" chips. */
 function topIngredients(recipes) {
@@ -290,32 +295,55 @@ function RecipePreview({ recipeId, onClose }) {
               <h3 className="font-body text-title-md text-on-surface">
                 Ingredienti{ingredients.length ? ` (${ingredients.length})` : ''}
               </h3>
-              <ul className="flex flex-col gap-1 font-body text-body-md text-on-surface-variant">
-                {ingredients.slice(0, 8).map((ing, i) => {
-                  const qty = [ing.quantity, ing.unit].filter(Boolean).join(' ')
-                  return (
-                    <li key={ing.id || i}>
-                      {ing.name}
-                      {qty ? <span className="tabular-nums"> · {qty}</span> : null}
-                    </li>
-                  )
-                })}
-                {ingredients.length > 8 ? <li className="text-outline">e altri {ingredients.length - 8}…</li> : null}
-                {!ingredients.length ? <li className="text-outline">Nessun ingrediente</li> : null}
-              </ul>
+              {ingredients.length ? (
+                <div className="flex flex-col gap-3">
+                  {groupBySection(ingredients).map((group, gi) => (
+                    <div key={`ing-${group.startIndex}`} className="flex flex-col gap-1">
+                      {group.section || gi > 0 ? (
+                        <h4 className={SECTION_HEADING}>{group.section || 'Altri ingredienti'}</h4>
+                      ) : null}
+                      <ul className="flex flex-col gap-1 font-body text-body-md text-on-surface-variant">
+                        {group.entries.map(({ item: ing, index }) => {
+                          const qty = formatScaledQty(ing.quantity, ing.unit)
+                          return (
+                            <li key={ing.id || index}>
+                              {ing.name}
+                              {qty ? <span className="tabular-nums"> · {qty}</span> : null}
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="font-body text-body-md text-outline">Nessun ingrediente</p>
+              )}
             </div>
             <div className="bg-surface-container-low rounded-xl p-4 flex flex-col gap-2">
               <h3 className="font-body text-title-md text-on-surface">
                 Passaggi{steps.length ? ` (${steps.length})` : ''}
               </h3>
-              <ol className="flex flex-col gap-1 font-body text-body-md text-on-surface-variant list-decimal list-inside">
-                {steps.slice(0, 4).map((s, i) => (
-                  <li key={s.id || i} className="line-clamp-2">
-                    {s.instruction}
-                  </li>
+              <div className="flex flex-col gap-3">
+                {groupBySection(steps.slice(0, MAX_PREVIEW_STEPS)).map((group, gi) => (
+                  <div key={`step-${group.startIndex}`} className="flex flex-col gap-1">
+                    {group.section || gi > 0 ? (
+                      <h4 className={SECTION_HEADING}>{group.section || 'Altri passi'}</h4>
+                    ) : null}
+                    <ol
+                      start={group.startIndex + 1}
+                      className="flex flex-col gap-1 font-body text-body-md text-on-surface-variant list-decimal list-inside"
+                    >
+                      {group.entries.map(({ item: st, index }) => (
+                        <li key={st.id || index} className="line-clamp-2">
+                          {st.instruction}
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
                 ))}
-              </ol>
-              {steps.length > 4 ? (
+              </div>
+              {steps.length > MAX_PREVIEW_STEPS ? (
                 <Link to={`/recipes/${recipeId}`} className="font-body text-label-sm text-primary hover:underline">
                   Tutti i {steps.length} passaggi →
                 </Link>
