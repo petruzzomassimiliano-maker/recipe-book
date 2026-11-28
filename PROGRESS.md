@@ -1101,6 +1101,7 @@ Parser `parseIngredientLine` (`worker/src/lib/scrapers/_base.js`), usato da JSON
 - **Ricette**: ricerca e filtri lato client sull’indice; chip «Cosa cucino» con gli ingredienti più usati (`rankByIngredients`); due viste desktop salvate per dispositivo (`authStore.recipesView`): *Dettaglio* (colonna con ricerca/dispensa/elenco + anteprima o caselle) e *Caselle* (griglia + anteprima in linea `?anteprima=<id>`). Telefono: sempre caselle, tocco → scheda completa.
 - **Impostazioni**: rail categorie + «Stato rapido», righe orizzontali, nuova riga «Visualizzazione ricette».
 - Anteprima locale con dati veri: `API_PROXY_TARGET=<WORKER_URL> npx vite` (proxy `/api` configurabile in `vite.config.js`).
+- **Prompt IA rivisti (2026-11-28)**: «Come cuocerla» ha il campo `induction` (solo padella/bollitura/vapore/grill: tempi, livelli 1-9, pentole) e livelli induzione nella temperatura; prompt spostato in `worker/src/lib/cookingPrompt.js`. «Come conservarla»: riso 1 giorno / pasta 2-3, frigo ≤4 °C, entro 2 ore, avviso botulino per sott’olio fatti in casa; `STORAGE_PROMPT_VERSION` nella firma (i vecchi consigli si rifanno al prossimo salvataggio o con «Rigenera»). `cookingDetect`: tempo preso dopo la temperatura, «180°» a fine frase, «1 ora». Prova a secco dei prompt: `node scripts/check-ai-prompts.mjs` (serve `GEMINI_API_KEY` in `worker/.dev.vars`; non scrive nulla).
 
 ## Biblioteca codice critico (riuso in altri progetti)
 

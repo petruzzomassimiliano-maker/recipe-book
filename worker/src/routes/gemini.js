@@ -3,6 +3,7 @@ import { canViewRecipe, canEditRecipe } from '../lib/rbac.js'
 import { editorMiddleware } from '../middleware/auth.js'
 import { detectRecipeMethods } from '../lib/cookingDetect.js'
 import { generateStorageAdvice } from '../lib/storageAdvice.js'
+import { buildCookingPrompt } from '../lib/cookingPrompt.js'
 import {
   collectGeminiKeys,
   geminiChat,
@@ -41,6 +42,9 @@ const KNOWN_METHODS = new Set([
   'altro'
 ])
 
+/** Methods cooked on the hob, where gas vs induction matters. */
+const STOVETOP = new Set(['padella', 'bollitura', 'vapore', 'grill'])
+
 function normalizeMethodId(raw) {
   const id = String(raw || '')
     .trim()
@@ -61,6 +65,8 @@ function normalizeMethods(raw) {
       time: String(m.time || m.duration || '').trim(),
       notes: String(m.notes || '').trim(),
       differences: String(m.differences || m.diff || '').trim(),
+      // Stovetop methods only: what changes on an induction hob (power level, times, pans)
+      induction: STOVETOP.has(normalizeMethodId(m.method || m.id)) ? String(m.induction || '').trim() : '',
       recommended: Boolean(m.recommended)
     }))
     .filter((m) => m.label)
@@ -119,53 +125,7 @@ gemini.post('/cooking-methods', async (c) => {
       microonde: 'Microonde'
     }
 
-    const primaryBlock = primary
-      ? `METODO DELLA RICETTA (già deciso, non cambiarlo): "${primary}"${
-          detected.params.temperature || detected.params.time
-            ? ` — dal testo: ${[detected.params.temperature, detected.params.time].filter(Boolean).join(', ')}`
-            : ''
-        }.
-Per questo metodo copia ESATTAMENTE temperatura, modalità (statico/ventilato) e tempi scritti nella ricetta; non arrotondare e non "migliorare". Se la ricetta ha più fasi (es. griglia e poi forno), "time" è solo la fase di quel metodo.`
-      : 'La ricetta non indica chiaramente un metodo: proponi quello più tradizionale per questo piatto.'
-
-    const focusBlock = focusMethod
-      ? `
-FOCUS OBBLIGATORIO: l'utente ha scelto "${focusMethod}".
-Restituisci UN oggetto con method="${focusMethod}": temperature, time, notes pratiche passo-passo, differences rispetto al metodo della ricetta.
-Se "${focusMethod}" NON è adatto a questo piatto (es. bollitura per dei pancake), restituiscilo comunque con temperature e time vuoti e in notes spiega in 1-2 frasi perché è sconsigliato. Non inventare procedimenti assurdi.
-Puoi aggiungere al massimo 1 alternativa breve.
-`
-      : ''
-
-    const prompt = `Sei un cuoco esperto. Per questa ricetta indica come cuocerla con i metodi di cottura sensati.
-Restituisci SOLO JSON:
-{
-  "methods": [
-    {
-      "method": "forno|padella|friggitrice_aria|bollitura|vapore|grill|microonde",
-      "label": "nome leggibile IT",
-      "temperature": "es. 180°C statico, oppure fuoco medio; vuoto se non serve",
-      "time": "es. 25-30 min",
-      "notes": "come procedere, passi concreti e brevi",
-      "differences": "cosa cambia rispetto al metodo della ricetta (texture, tempi, grassi)"
-    }
-  ],
-  "summary": "1-2 frasi: il metodo della ricetta e quando conviene un'alternativa"
-}
-
-${primaryBlock}
-
-Regole per le ALTERNATIVE:
-- Proponi solo metodi davvero adatti a QUESTO piatto (massimo 3 in totale, incluso quello della ricetta). Niente bollitura per impasti da cuocere in padella/forno, niente microonde per lievitati, ecc.
-- Conversioni realistiche dal metodo della ricetta:
-  · forno ventilato ≈ statico −10/20 °C, tempi simili;
-  · friggitrice ad aria ≈ forno ventilato −10/20 °C e −20/30% del tempo, pezzi in un solo strato, girare a metà;
-  · teglie alte/sformati/torte in friggitrice ad aria solo se lo stampo ci sta: dillo.
-- Carne, pollo, pesce, uova: se pertinente indica la temperatura al cuore di sicurezza (es. pollo 75 °C).
-- Non inventare ingredienti; usa le quantità della ricetta. Lingua italiana.
-${focusBlock}
-RICETTA:
-${recipeContextSummary(recipe)}`
+    const prompt = buildCookingPrompt(recipe, { primary, params: detected.params, focusMethod })
 
     const text = await geminiGenerateContent(c.env, [{ text: prompt }], {
       temperature: 0.2,

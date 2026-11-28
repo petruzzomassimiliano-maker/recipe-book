@@ -6,6 +6,10 @@ import {
   normalizeMethodId
 } from '../../utils/cookingAppliances.js'
 import { detectRecipeMethods } from '../../utils/cookingDetect.js'
+import Icon from '../ui/Icon.jsx'
+
+/** Hob methods: gas vs induction changes power levels and heat-up times. */
+const STOVETOP = new Set(['padella', 'bollitura', 'vapore', 'grill'])
 
 export default function CookingMethodsSection({
   recipe,
@@ -94,11 +98,11 @@ export default function CookingMethodsSection({
   }
 
   return (
-    <section className="card p-5 sm:p-6 mt-4 border-primary/20 bg-gradient-to-br from-orange-50/70 via-white to-teal-50/40">
+    <section className="card p-5 sm:p-6 mt-4">
       <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Come cuocerla</h2>
-          <p className="text-xs text-gray-400 mt-0.5">
+          <h2 className="font-headline text-headline-md text-on-surface">Come cuocerla</h2>
+          <p className="text-xs text-stone-400 mt-0.5">
             Tocca un’icona per aprire i consigli · ritocca per chiudere
           </p>
         </div>
@@ -129,7 +133,7 @@ export default function CookingMethodsSection({
       )}
 
       {summary && expanded && !staleGuides && (
-        <p className="mb-4 text-[15px] leading-relaxed text-gray-700">{summary}</p>
+        <p className="mb-4 text-[15px] leading-relaxed text-stone-700">{summary}</p>
       )}
 
       <div
@@ -162,7 +166,7 @@ export default function CookingMethodsSection({
                   ? 'border-primary bg-white text-primary shadow-md scale-[1.03]'
                   : inRecipe
                     ? 'border-teal-200 bg-teal-50/80 text-teal-900 hover:border-teal-300'
-                    : 'border-gray-100 bg-white/80 text-gray-600 hover:border-gray-200 hover:text-gray-900',
+                    : 'border-stone-100 bg-white/80 text-stone-600 hover:border-stone-200 hover:text-stone-900',
                 busy ? 'opacity-70' : ''
               ].join(' ')}
             >
@@ -184,25 +188,25 @@ export default function CookingMethodsSection({
                 </span>
               )}
               {!inRecipe && hasGuide && (
-                <span className="text-[9px] uppercase tracking-wide text-gray-400 font-medium">
+                <span className="text-[9px] uppercase tracking-wide text-stone-400 font-medium">
                   Guida
                 </span>
               )}
-              {busy && <span className="text-[9px] text-gray-400">…</span>}
+              {busy && <span className="text-[9px] text-stone-400">…</span>}
             </button>
           )
         })}
       </div>
 
       {expanded && selectedId && (
-        <div className="mt-4 rounded-2xl border border-gray-100 bg-white p-4 sm:p-6 animate-fade-in max-h-[min(70vh,32rem)] overflow-y-auto">
+        <div className="mt-4 rounded-2xl border border-stone-100 bg-white p-4 sm:p-6 animate-fade-in max-h-[min(70vh,32rem)] overflow-y-auto">
           <div className="flex items-start justify-between gap-3 mb-4">
             <div className="flex items-center gap-3">
-              <span className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-orange-50 text-primary shrink-0">
+              <span className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary-tint text-primary shrink-0">
                 <ApplianceIcon id={selectedId} className="w-8 h-8" />
               </span>
               <div>
-                <h3 className="font-semibold text-gray-900 text-base sm:text-lg">
+                <h3 className="font-semibold text-stone-900 text-base sm:text-lg">
                   {selectedMethod?.label || selectedMeta?.label || selectedId}
                 </h3>
                 {recommendedId === selectedId && (
@@ -212,7 +216,7 @@ export default function CookingMethodsSection({
             </div>
             <button
               type="button"
-              className="text-xs text-gray-400 hover:text-gray-700 shrink-0 px-2 py-1"
+              className="text-xs text-stone-400 hover:text-stone-700 shrink-0 px-2 py-1"
               onClick={() => {
                 setExpanded(false)
                 setSelectedId(null)
@@ -223,27 +227,27 @@ export default function CookingMethodsSection({
           </div>
 
           {loadingMethod === selectedId && !selectedMethod ? (
-            <p className="text-sm text-gray-400">Sto preparando le indicazioni…</p>
+            <p className="text-sm text-stone-400">Sto preparando le indicazioni…</p>
           ) : selectedMethod ? (
             <>
               <dl className="grid grid-cols-2 gap-3 text-sm mb-4">
                 {selectedMethod.temperature && (
-                  <div className="rounded-xl bg-gray-50 px-3 py-3">
-                    <dt className="text-[11px] uppercase tracking-wide text-gray-400">Temperatura</dt>
-                    <dd className="font-semibold text-gray-800 mt-1 text-base">
+                  <div className="rounded-xl bg-stone-50 px-3 py-3">
+                    <dt className="text-[11px] uppercase tracking-wide text-stone-400">Temperatura</dt>
+                    <dd className="font-semibold text-stone-800 mt-1 text-base">
                       {selectedMethod.temperature}
                     </dd>
                   </div>
                 )}
                 {selectedMethod.time && (
-                  <div className="rounded-xl bg-gray-50 px-3 py-3">
-                    <dt className="text-[11px] uppercase tracking-wide text-gray-400">Tempo</dt>
-                    <dd className="font-semibold text-gray-800 mt-1 text-base">{selectedMethod.time}</dd>
+                  <div className="rounded-xl bg-stone-50 px-3 py-3">
+                    <dt className="text-[11px] uppercase tracking-wide text-stone-400">Tempo</dt>
+                    <dd className="font-semibold text-stone-800 mt-1 text-base">{selectedMethod.time}</dd>
                   </div>
                 )}
               </dl>
               {selectedMethod.notes && (
-                <p className="text-[15px] sm:text-base text-gray-700 leading-relaxed whitespace-pre-wrap">
+                <p className="text-[15px] sm:text-base text-stone-700 leading-relaxed whitespace-pre-wrap">
                   {selectedMethod.notes}
                 </p>
               )}
@@ -252,10 +256,30 @@ export default function CookingMethodsSection({
                   {selectedMethod.differences}
                 </p>
               )}
+              {STOVETOP.has(selectedId) &&
+                (selectedMethod.induction ? (
+                  <div className="mt-4 rounded-xl border border-tertiary/20 bg-tertiary-container px-3.5 py-3 text-tertiary-on-container">
+                    <p className="flex items-center gap-1.5 font-body text-label-lg">
+                      <Icon name="cooktop" size={18} />
+                      Con il piano a induzione
+                    </p>
+                    <p className="mt-1 text-sm leading-relaxed whitespace-pre-wrap">{selectedMethod.induction}</p>
+                  </div>
+                ) : onSelectAppliance ? (
+                  <button
+                    type="button"
+                    className="mt-4 inline-flex items-center gap-1.5 min-h-[40px] px-3.5 rounded-full border border-tertiary/30 bg-tertiary-container text-tertiary-on-container font-body text-label-lg disabled:opacity-60"
+                    onClick={() => onSelectAppliance(selectedId)}
+                    disabled={loading}
+                  >
+                    <Icon name="cooktop" size={18} />
+                    {loadingMethod === selectedId ? 'Chiedo all’IA…' : 'Cosa cambia con l’induzione?'}
+                  </button>
+                ) : null)}
             </>
           ) : (
             <div className="space-y-3">
-              <p className="text-sm text-gray-500 leading-relaxed">
+              <p className="text-sm text-stone-500 leading-relaxed">
                 {mentionedIds.has(selectedId)
                   ? 'La ricetta parla di questo metodo, ma non ho ancora i dettagli operativi.'
                   : 'Nessuna guida salvata per questo metodo.'}

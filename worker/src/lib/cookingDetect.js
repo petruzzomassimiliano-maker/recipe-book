@@ -29,20 +29,28 @@ function stripFalseFriends(text) {
     .replace(/friggitrice\s+ad\s*aria/gi, ' airfryer ')
 }
 
-const TEMP_RE = /(\d{2,3})\s*(?:°|gradi)\s*c?\b/i
+const TEMP_RE = /(\d{2,3})\s*(?:°|gradi)(?:\s*c\b)?/i
 const TIME_RE = /(\d+(?:[.,]\d+)?(?:\s*[-–]\s*\d+(?:[.,]\d+)?)?)\s*(minuti|minuto|min|ore|ora|h)\b/i
 const MODE_RE = /\b(static[oa]|ventilat[oa])\b/i
+
+function formatTime(match) {
+  const amount = match[1].replace(/\s*[-–]\s*/, '-')
+  if (!/^(ore|ora|h)$/i.test(match[2])) return `${amount} min`
+  return `${amount} ${amount === '1' ? 'ora' : 'ore'}`
+}
 
 function stepParams(text) {
   const t = String(text || '')
   const temp = t.match(TEMP_RE)
-  const time = t.match(TIME_RE)
+  // "riposare 10 minuti, poi inforna a 180° per 25 minuti": the cooking time is the
+  // one that follows the temperature, not the first one in the step
+  const time = (temp && t.slice(temp.index).match(TIME_RE)) || t.match(TIME_RE)
   const mode = t.match(MODE_RE)
   return {
     temperature: temp
       ? `${temp[1]}°C${mode ? (/^stat/i.test(mode[1]) ? ' statico' : ' ventilato') : ''}`
       : '',
-    time: time ? `${time[1].replace(/\s*[-–]\s*/, '-')} ${/^(ore|ora|h)$/i.test(time[2]) ? 'ore' : 'min'}` : ''
+    time: time ? formatTime(time) : ''
   }
 }
 

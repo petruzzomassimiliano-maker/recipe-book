@@ -11,9 +11,13 @@ async function sha256Hex(text) {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
-/** Changes only when what you'd store changes (not servings, tags, photo…). */
+/** Bump when the prompt rules change: old advice is then redone at the next save. */
+const STORAGE_PROMPT_VERSION = 2
+
+/** Changes only when what you'd store changes (not servings, tags, photo…) or the rules do. */
 export async function storageSignature(recipe) {
   const basis = JSON.stringify([
+    STORAGE_PROMPT_VERSION,
     String(recipe?.title || '').trim().toLowerCase(),
     (recipe?.ingredients || []).map((i) => String(i?.name || '').trim().toLowerCase()),
     (recipe?.steps || []).map((s) => String(s?.instruction || '').trim())
@@ -61,8 +65,10 @@ Restituisci SOLO JSON:
 }
 
 Regole:
-- Tempi PRUDENTI secondo le linee guida di sicurezza alimentare (EFSA/Ministero della Salute): piatti cotti in frigo di norma 2-3 giorni (max 4); pesce, molluschi, uova crude o poco cotte, creme e mascarpone 1-2 giorni; a temperatura ambiente cibi deperibili max 2 ore.
-- Riso e pasta cotti: raffreddare in fretta, frigo max 1-2 giorni, riscaldare una sola volta fino a fumante.
+- Tempi PRUDENTI secondo le linee guida di sicurezza alimentare (EFSA/Ministero della Salute): piatti cotti in frigo (a 4 °C o meno) di norma 2-3 giorni (max 4); pesce, molluschi, uova crude o poco cotte, creme, panna e mascarpone 1-2 giorni.
+- A temperatura ambiente i cibi deperibili stanno al massimo 2 ore: vanno messi in frigo entro 2 ore dalla cottura, divisi in contenitori bassi per raffreddarli in fretta. Prodotti secchi da forno (pane, biscotti, torte senza creme) invece si conservano a temperatura ambiente, ben chiusi.
+- Riso cotto: raffreddare in fretta, frigo max 1 giorno, riscaldare una sola volta fino a fumante. Pasta cotta: frigo 2-3 giorni.
+- Preparazioni fatte in casa sott'olio o sottovuoto (aglio, erbe, pesto, verdure, funghi): rischio botulino. Solo in frigo, pochi giorni, mai a temperatura ambiente; per tenerle a lungo meglio congelarle. Segnalalo in "warning".
 - Se un luogo non è adatto (es. fritti o insalate crude in congelatore, creme a temperatura ambiente) metti "ok": false e spiega il motivo in "how".
 - Distingui, se utile, cosa congelare prima o dopo la cottura.
 - Frasi brevi, pratiche, in italiano. Non inventare ingredienti.
